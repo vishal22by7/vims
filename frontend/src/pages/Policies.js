@@ -10,6 +10,13 @@ const Policies = () => {
     fetchPolicies();
   }, []);
 
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(value || 0);
+
   const fetchPolicies = async () => {
     try {
       const res = await policyAPI.getAll();
@@ -58,7 +65,7 @@ const Policies = () => {
                     <br />
                     <small>{policy.vehicleType} - {policy.engineCapacity}L</small>
                   </td>
-                  <td>${policy.premium.toFixed(2)}</td>
+                  <td>{formatCurrency(policy.premium)}</td>
                   <td>{new Date(policy.startDate).toLocaleDateString()}</td>
                   <td>{new Date(policy.endDate).toLocaleDateString()}</td>
                   <td>

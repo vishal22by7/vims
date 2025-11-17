@@ -18,7 +18,7 @@ const policyTypes = [
     ageFactor: 0.015,
     engineFactor: 0.003,
     addOns: {
-      'Zero Depreciation': 0.20,
+      'Zero Depreciation': 0.2,
       'Engine Protect': 0.08,
       'Roadside Assistance': 0.05
     }
@@ -63,9 +63,63 @@ const policyTypes = [
     ageFactor: 0.02,
     engineFactor: 0.004,
     addOns: {
-      'Zero Depreciation': 0.30,
+      'Zero Depreciation': 0.3,
       'Return to Invoice': 0.1,
       'Tyre Protect': 0.05
+    }
+  },
+  {
+    name: 'Electric Vehicle Comprehensive',
+    description: 'EV-specific plan covering traction battery, charger, and own damage.',
+    baseRate: 10500,
+    ageFactor: 0.013,
+    engineFactor: 0.0028,
+    addOns: {
+      'Battery Protect': 0.12,
+      'Charger Cover': 0.06,
+      'Roadside Assistance': 0.05
+    }
+  },
+  {
+    name: 'Pay-as-You-Drive Private Car',
+    description: 'Usage-based plan for private cars with telematics-based discounts.',
+    baseRate: 7500,
+    ageFactor: 0.011,
+    engineFactor: 0.002,
+    addOns: {
+      'Zero Depreciation': 0.18,
+      'Daily Allowance': 0.03
+    }
+  },
+  {
+    name: 'Two-Wheeler Third-Party – 5 Year',
+    description: 'Long-term TP plan for new two-wheelers as per IRDAI mandate.',
+    baseRate: 5200,
+    ageFactor: 0.005,
+    engineFactor: 0.001,
+    addOns: {}
+  },
+  {
+    name: 'Commercial Passenger Bus Package',
+    description: 'All-inclusive cover for tourist and city passenger buses.',
+    baseRate: 18500,
+    ageFactor: 0.02,
+    engineFactor: 0.0045,
+    addOns: {
+      'Personal Accident Driver': 0.04,
+      'Passenger Liability': 0.05,
+      'Loss of Revenue': 0.06
+    }
+  },
+  {
+    name: 'Taxi & Fleet Comprehensive',
+    description: 'Aggregated cover for yellow-plate taxis and ride-sharing fleets.',
+    baseRate: 14000,
+    ageFactor: 0.017,
+    engineFactor: 0.0032,
+    addOns: {
+      'Legal Liability Paid Driver': 0.03,
+      'Engine Protect': 0.07
     }
   }
 ];

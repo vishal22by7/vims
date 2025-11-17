@@ -31,6 +31,13 @@ const AdminPolicyTypes = () => {
     }
   };
 
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(value || 0);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({
@@ -213,7 +220,7 @@ const AdminPolicyTypes = () => {
               <tr key={pt._id}>
                 <td>{pt.name}</td>
                 <td>{pt.description}</td>
-                <td>${pt.baseRate.toFixed(2)}</td>
+                <td>{formatCurrency(pt.baseRate)}</td>
                 <td>{pt.ageFactor}</td>
                 <td>{pt.engineFactor}</td>
                 <td>

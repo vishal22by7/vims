@@ -19,6 +19,11 @@ const BuyPolicy = () => {
   });
   const [premium, setPremium] = useState(null);
   const [loading, setLoading] = useState(false);
+  const formatCurrency = (value) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2
+  }).format(value || 0);
 
   useEffect(() => {
     fetchPolicyTypes();
@@ -240,7 +245,7 @@ const BuyPolicy = () => {
 
             {premium && (
               <div className="premium-display">
-                <strong>Calculated Premium: ${premium.toFixed(2)}</strong>
+                <strong>Calculated Premium: {formatCurrency(premium)}</strong>
               </div>
             )}
 

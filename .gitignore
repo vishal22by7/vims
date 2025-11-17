@@ -3,3 +3,5 @@ backend/.env
 frontend/.env
 smart-contracts/.env
 uploads/
+smart-contracts/artifacts/
+smart-contracts/cache/

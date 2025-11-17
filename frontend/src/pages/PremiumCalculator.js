@@ -15,6 +15,12 @@ const PremiumCalculator = () => {
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(value || 0);
 
   useEffect(() => {
     fetchPolicyTypes();
@@ -185,25 +191,25 @@ const PremiumCalculator = () => {
             <div className="calculation-result">
               <div className="result-row">
                 <span>Base Premium:</span>
-                <strong>${result.basePremium.toFixed(2)}</strong>
+                <strong>{formatCurrency(result.basePremium)}</strong>
               </div>
               {result.totalAddOnCost > 0 && (
                 <>
                   <div className="result-row">
                     <span>Add-ons:</span>
-                    <strong>${result.totalAddOnCost.toFixed(2)}</strong>
+                    <strong>{formatCurrency(result.totalAddOnCost)}</strong>
                   </div>
                   {Object.entries(result.addOnCosts).map(([addOn, cost]) => (
                     <div key={addOn} className="result-row sub-item">
                       <span>{addOn}:</span>
-                      <span>${cost.toFixed(2)}</span>
+                      <span>{formatCurrency(cost)}</span>
                     </div>
                   ))}
                 </>
               )}
               <div className="result-row total">
                 <span>Final Premium:</span>
-                <strong>${result.finalPremium.toFixed(2)}</strong>
+                <strong>{formatCurrency(result.finalPremium)}</strong>
               </div>
             </div>
           </div>

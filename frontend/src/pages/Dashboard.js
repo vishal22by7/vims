@@ -16,6 +16,13 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(value || 0);
+
   const fetchData = async () => {
     try {
       const [policiesRes, claimsRes] = await Promise.all([
@@ -102,7 +109,7 @@ const Dashboard = () => {
                     <tr key={policy._id}>
                       <td>{policy.policyTypeId?.name || 'N/A'}</td>
                       <td>{policy.vehicleBrand} {policy.vehicleModel} ({policy.modelYear})</td>
-                      <td>${policy.premium.toFixed(2)}</td>
+                      <td>{formatCurrency(policy.premium)}</td>
                       <td>
                         <span className={`badge ${new Date(policy.endDate) > new Date() ? 'badge-success' : 'badge-danger'}`}>
                           {new Date(policy.endDate) > new Date() ? 'Active' : 'Expired'}
