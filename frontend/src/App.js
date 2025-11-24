@@ -1,8 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider, AuthContext } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -17,6 +17,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminPolicies from './pages/admin/AdminPolicies';
 import AdminClaims from './pages/admin/AdminClaims';
 import Navbar from './components/Navbar';
+import ToastContainerWrapper from './components/ToastContainerWrapper';
 import './App.css';
 
 const PrivateRoute = ({ children }) => {
@@ -49,10 +50,11 @@ const AdminRoute = ({ children }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="App">
-          <Navbar />
+    <ThemeProvider>
+      <AuthProvider>
+        <Router>
+          <div className="App">
+            <Navbar />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -150,20 +152,11 @@ function App() {
             
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>
-          <ToastContainer
-            position="top-right"
-            autoClose={3000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-          />
+          <ToastContainerWrapper />
         </div>
       </Router>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
 

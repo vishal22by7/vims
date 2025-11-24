@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { adminAPI } from '../../services/api';
+import { adminAPI, policyAPI } from '../../services/api';
 
 const AdminPolicies = () => {
   const [policies, setPolicies] = useState([]);
@@ -27,6 +27,20 @@ const AdminPolicies = () => {
       toast.error('Failed to load policies');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (policyId) => {
+    if (!window.confirm('Are you sure you want to delete this policy? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await policyAPI.delete(policyId);
+      toast.success('Policy deleted successfully');
+      fetchPolicies();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete policy');
     }
   };
 
@@ -57,6 +71,7 @@ const AdminPolicies = () => {
               <th>Start Date</th>
               <th>End Date</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -72,6 +87,14 @@ const AdminPolicies = () => {
                   {policy.vehicleBrand} {policy.vehicleModel} ({policy.modelYear})
                   <br />
                   <small>{policy.vehicleType} - {policy.engineCapacity}L</small>
+                  {policy.registrationNumber && (
+                    <>
+                      <br />
+                      <small style={{ color: '#666' }}>
+                        Reg: {policy.registrationNumber} | Chassis: {policy.chassisNumber?.substring(0, 12)}...
+                      </small>
+                    </>
+                  )}
                 </td>
                 <td>{formatCurrency(policy.premium)}</td>
                 <td>{new Date(policy.startDate).toLocaleDateString()}</td>
@@ -80,6 +103,15 @@ const AdminPolicies = () => {
                   <span className={`badge ${new Date(policy.endDate) > new Date() ? 'badge-success' : 'badge-danger'}`}>
                     {new Date(policy.endDate) > new Date() ? 'Active' : 'Expired'}
                   </span>
+                </td>
+                <td>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => handleDelete(policy._id)}
+                    title="Delete Policy"
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}

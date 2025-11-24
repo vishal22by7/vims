@@ -32,6 +32,53 @@ const claimSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // ML Analysis fields
+  mlSeverity: {
+    type: Number,
+    default: null,
+    min: 0,
+    max: 100
+  },
+  mlReportCID: {
+    type: String,
+    default: null
+  },
+  damageParts: {
+    type: [String],
+    default: []
+  },
+  mlConfidence: {
+    type: Number,
+    default: null
+  },
+  mlValidationError: {
+    type: String,
+    default: null
+  },
+  // Private verification fields
+  verified: {
+    type: Boolean,
+    default: false
+  },
+  fabricVerificationCID: {
+    type: String,
+    default: null
+  },
+  // Payout fields
+  payoutAmount: {
+    type: Number,
+    default: 0
+  },
+  payoutStatus: {
+    type: String,
+    enum: ['Pending', 'Approved', 'Paid', 'Rejected'],
+    default: 'Pending'
+  },
+  // Oracle fields
+  blockchainEvaluated: {
+    type: Boolean,
+    default: false
+  },
   submittedAt: {
     type: Date,
     default: Date.now

@@ -1,8 +1,14 @@
 .navbar {
-  background-color: #007bff;
+  background-color: var(--navbar-bg);
   color: white;
   padding: 0;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.3s ease;
+}
+
+[data-theme="dark"] .navbar {
+  background-color: #1e293b;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .navbar-container {
@@ -69,5 +75,31 @@
 .btn-sm {
   padding: 6px 12px;
   font-size: 14px;
+}
+
+.theme-toggle {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 20px;
+  transition: all 0.3s ease;
+  padding: 0;
+  margin-right: 10px;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
 }
 

@@ -30,6 +30,20 @@ const Policies = () => {
     }
   };
 
+  const handleDelete = async (policyId) => {
+    if (!window.confirm('Are you sure you want to delete this policy? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await policyAPI.delete(policyId);
+      toast.success('Policy deleted successfully');
+      fetchPolicies();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete policy');
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
@@ -54,6 +68,7 @@ const Policies = () => {
                 <th>End Date</th>
                 <th>Status</th>
                 <th>Blockchain</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -64,6 +79,14 @@ const Policies = () => {
                     {policy.vehicleBrand} {policy.vehicleModel} ({policy.modelYear})
                     <br />
                     <small>{policy.vehicleType} - {policy.engineCapacity}L</small>
+                    {policy.registrationNumber && (
+                      <>
+                        <br />
+                        <small style={{ color: '#666' }}>
+                          Reg: {policy.registrationNumber} | Chassis: {policy.chassisNumber?.substring(0, 12)}...
+                        </small>
+                      </>
+                    )}
                   </td>
                   <td>{formatCurrency(policy.premium)}</td>
                   <td>{new Date(policy.startDate).toLocaleDateString()}</td>
@@ -81,6 +104,15 @@ const Policies = () => {
                     ) : (
                       <span className="badge badge-warning">Pending</span>
                     )}
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDelete(policy._id)}
+                      title="Delete Policy"
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}

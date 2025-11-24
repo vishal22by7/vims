@@ -2,11 +2,18 @@ const { ethers } = require('ethers');
 const path = require('path');
 const fs = require('fs');
 
-// Try to load contract artifact, but handle if it doesn't exist yet
+// Try to load contract artifacts, but handle if they don't exist yet
 let InsuranceLedger = null;
-const contractPath = path.join(__dirname, '../../smart-contracts/artifacts/contracts/InsuranceLedger.sol/InsuranceLedger.json');
-if (fs.existsSync(contractPath)) {
-  InsuranceLedger = require(contractPath);
+let VehicleInsurance = null;
+
+const ledgerPath = path.join(__dirname, '../../smart-contracts/artifacts/contracts/InsuranceLedger.sol/InsuranceLedger.json');
+const vehiclePath = path.join(__dirname, '../../smart-contracts/artifacts/contracts/VehicleInsurance.sol/VehicleInsurance.json');
+
+if (fs.existsSync(ledgerPath)) {
+  InsuranceLedger = require(ledgerPath);
+}
+if (fs.existsSync(vehiclePath)) {
+  VehicleInsurance = require(vehiclePath);
 }
 
 class BlockchainService {
@@ -43,15 +50,29 @@ class BlockchainService {
         return;
       }
 
-      if (this.contractAddress && InsuranceLedger && InsuranceLedger.abi) {
-        this.contract = new ethers.Contract(
-          this.contractAddress,
-          InsuranceLedger.abi,
-          this.wallet
-        );
-        console.log('✅ Blockchain service initialized');
+      // Try to use VehicleInsurance contract first, fallback to InsuranceLedger
+      if (this.contractAddress) {
+        if (VehicleInsurance && VehicleInsurance.abi) {
+          this.contract = new ethers.Contract(
+            this.contractAddress,
+            VehicleInsurance.abi,
+            this.wallet
+          );
+          this.contractType = 'VehicleInsurance';
+          console.log('✅ Blockchain service initialized with VehicleInsurance contract');
+        } else if (InsuranceLedger && InsuranceLedger.abi) {
+          this.contract = new ethers.Contract(
+            this.contractAddress,
+            InsuranceLedger.abi,
+            this.wallet
+          );
+          this.contractType = 'InsuranceLedger';
+          console.log('✅ Blockchain service initialized with InsuranceLedger contract');
+        } else {
+          console.warn('⚠️  Smart contract not deployed yet or artifact not found');
+        }
       } else {
-        console.warn('⚠️  Smart contract not deployed yet or artifact not found');
+        console.warn('⚠️  Smart contract address not set');
       }
     } catch (error) {
       console.error('Blockchain initialization error:', error);
@@ -108,6 +129,41 @@ class BlockchainService {
       };
     } catch (error) {
       console.error('Blockchain submitClaim error:', error);
+      throw error;
+    }
+  }
+
+  async submitClaimWithML(claimId, policyId, userId, description, evidenceCids, mlReportCID, severity) {
+    try {
+      if (!this.contract) {
+        throw new Error('Smart contract not initialized');
+      }
+
+      // Use new VehicleInsurance contract if available
+      if (this.contractType === 'VehicleInsurance') {
+        const tx = await this.contract.submitClaim(
+          claimId,
+          policyId,
+          userId,
+          description,
+          evidenceCids,
+          mlReportCID || '',
+          severity || 0
+        );
+
+        const receipt = await tx.wait();
+        
+        return {
+          txHash: receipt.hash,
+          blockNumber: receipt.blockNumber,
+          timestamp: new Date()
+        };
+      } else {
+        // Fallback to old contract
+        return await this.submitClaim(claimId, policyId, userId, description, evidenceCids);
+      }
+    } catch (error) {
+      console.error('Blockchain submitClaimWithML error:', error);
       throw error;
     }
   }

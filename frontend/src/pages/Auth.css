@@ -7,24 +7,25 @@
 }
 
 .auth-card {
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 8px;
   padding: 40px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px var(--shadow);
   width: 100%;
   max-width: 400px;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .auth-card h2 {
   margin-bottom: 30px;
   text-align: center;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .auth-link {
   text-align: center;
   margin-top: 20px;
-  color: #666;
+  color: var(--text-tertiary);
 }
 
 .auth-link a {

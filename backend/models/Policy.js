@@ -44,8 +44,20 @@ const policySchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  registrationNumber: {
+    type: String,
+    required: true,
+    trim: true,
+    uppercase: true
+  },
+  chassisNumber: {
+    type: String,
+    required: true,
+    trim: true,
+    uppercase: true
+  },
   policyIdOnChain: {
-    type: Number,
+    type: String,
     default: null
   },
   blockchainTxHash: {

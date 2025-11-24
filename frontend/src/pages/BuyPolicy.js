@@ -13,6 +13,8 @@ const BuyPolicy = () => {
     vehicleModel: '',
     modelYear: new Date().getFullYear(),
     engineCapacity: '',
+    registrationNumber: '',
+    chassisNumber: '',
     startDate: '',
     endDate: '',
     addOns: [],
@@ -86,6 +88,8 @@ const BuyPolicy = () => {
         premium,
         modelYear: parseInt(formData.modelYear),
         engineCapacity: parseFloat(formData.engineCapacity),
+        registrationNumber: formData.registrationNumber.toUpperCase().trim(),
+        chassisNumber: formData.chassisNumber.toUpperCase().trim(),
       });
 
       if (res.data.success) {
@@ -195,6 +199,38 @@ const BuyPolicy = () => {
                 step="0.1"
                 required
               />
+            </div>
+
+            <div className="form-group">
+              <label>Vehicle Registration Number *</label>
+              <input
+                type="text"
+                name="registrationNumber"
+                value={formData.registrationNumber}
+                onChange={handleChange}
+                placeholder="e.g., MH12AB1234"
+                style={{ textTransform: 'uppercase' }}
+                required
+              />
+              <small style={{ color: '#666', fontSize: '0.9em' }}>
+                Enter your vehicle's official registration number
+              </small>
+            </div>
+
+            <div className="form-group">
+              <label>Chassis Number (VIN) *</label>
+              <input
+                type="text"
+                name="chassisNumber"
+                value={formData.chassisNumber}
+                onChange={handleChange}
+                placeholder="e.g., ABC1234567890XYZ"
+                style={{ textTransform: 'uppercase' }}
+                required
+              />
+              <small style={{ color: '#666', fontSize: '0.9em' }}>
+                Enter your vehicle's unique chassis/VIN number
+              </small>
             </div>
 
             {availableAddOns.length > 0 && (

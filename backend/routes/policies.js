@@ -77,7 +77,9 @@ router.post('/buy', auth, [
   body('vehicleBrand').notEmpty().withMessage('Vehicle brand is required'),
   body('vehicleModel').notEmpty().withMessage('Vehicle model is required'),
   body('modelYear').isInt().withMessage('Model year is required'),
-  body('engineCapacity').isFloat({ min: 0 }).withMessage('Engine capacity is required')
+  body('engineCapacity').isFloat({ min: 0 }).withMessage('Engine capacity is required'),
+  body('registrationNumber').notEmpty().trim().withMessage('Vehicle registration number is required'),
+  body('chassisNumber').notEmpty().trim().withMessage('Chassis number is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -94,7 +96,9 @@ router.post('/buy', auth, [
       vehicleBrand,
       vehicleModel,
       modelYear,
-      engineCapacity
+      engineCapacity,
+      registrationNumber,
+      chassisNumber
     } = req.body;
 
     // Verify policy type exists
@@ -122,6 +126,17 @@ router.post('/buy', auth, [
       return res.status(400).json({ success: false, message: 'Invalid model year' });
     }
 
+    // Check for duplicate registration number
+    const existingPolicy = await Policy.findOne({ 
+      registrationNumber: registrationNumber.toUpperCase().trim() 
+    });
+    if (existingPolicy) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'A policy already exists for this vehicle registration number' 
+      });
+    }
+
     // Create policy
     const policy = new Policy({
       userId: req.user._id,
@@ -133,7 +148,9 @@ router.post('/buy', auth, [
       vehicleBrand,
       vehicleModel,
       modelYear,
-      engineCapacity
+      engineCapacity,
+      registrationNumber: registrationNumber.toUpperCase().trim(),
+      chassisNumber: chassisNumber.toUpperCase().trim()
     });
 
     await policy.save();
@@ -196,6 +213,61 @@ router.post('/buy', auth, [
       });
     }
     
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Delete policy (user can delete their own policy, admin can delete any)
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const policy = await Policy.findById(req.params.id);
+    
+    if (!policy) {
+      return res.status(404).json({ success: false, message: 'Policy not found' });
+    }
+
+    // Check if user owns this policy or is admin
+    if (policy.userId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Check if policy has any claims
+    const Claim = require('../models/Claim');
+    const claimsCount = await Claim.countDocuments({ policyId: req.params.id });
+    
+    if (claimsCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete policy. ${claimsCount} claim(s) are associated with this policy. Please delete the claims first.`
+      });
+    }
+
+    // Delete blockchain record if exists
+    if (policy.blockchainTxHash) {
+      try {
+        const BlockchainRecord = require('../models/BlockchainRecord');
+        await BlockchainRecord.deleteMany({ 
+          entityType: 'Policy', 
+          entityId: policy._id 
+        });
+      } catch (blockchainError) {
+        console.error('Error deleting blockchain records:', blockchainError);
+        // Continue with policy deletion even if blockchain record deletion fails
+      }
+    }
+
+    await Policy.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Policy deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete policy error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error',

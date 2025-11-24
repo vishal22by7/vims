@@ -3,11 +3,15 @@
   "version": "1.1.0",
   "description": "Blockchain-Integrated Vehicle Insurance Management System",
   "scripts": {
-    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../smart-contracts && npm install",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../smart-contracts && npm install && cd ../fabric-simulator && npm install && cd ../oracle-service && npm install",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm start",
     "dev:blockchain": "cd smart-contracts && npx hardhat node",
+    "dev:ml": "cd ml-analyzer && python app.py",
+    "dev:fabric": "cd fabric-simulator && npm start",
+    "dev:oracle": "cd oracle-service && npm start",
     "deploy:contract": "cd smart-contracts && npx hardhat run scripts/deploy.js --network localhost",
+    "deploy:vehicle-insurance": "cd smart-contracts && npx hardhat run scripts/deploy-vehicle-insurance.js --network localhost",
     "create-admin": "cd backend && node scripts/create-admin.js",
     "seed:policies": "cd backend && node scripts/seed-policy-types.js"
   },

@@ -1,7 +1,16 @@
 .App {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f5f9ff 0%, #fdfdfd 100%);
+  background: var(--bg-primary);
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  transition: background-color 0.3s ease;
+}
+
+[data-theme="light"] .App {
+  background: linear-gradient(180deg, #f5f9ff 0%, #fdfdfd 100%);
+}
+
+[data-theme="dark"] .App {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
 }
 
 .loading {
@@ -10,7 +19,7 @@
   align-items: center;
   height: 100vh;
   font-size: 1.2rem;
-  color: #4f5b72;
+  color: var(--text-secondary);
 }
 
 .container {
@@ -19,19 +28,24 @@
   padding: 32px 20px 60px;
 }
 
+.container h1 {
+  color: var(--text-primary);
+  transition: color 0.3s ease;
+}
+
 .card {
-  background: #ffffff;
+  background: var(--bg-secondary);
   border-radius: 16px;
   padding: 28px;
-  box-shadow: 0 15px 45px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 15px 45px var(--shadow);
   margin-bottom: 24px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid var(--card-border);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
 }
 
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 20px 50px var(--shadow-hover);
 }
 
 .btn {
@@ -99,7 +113,7 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .form-group input,
@@ -107,11 +121,18 @@
 .form-group textarea {
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid #d7dce4;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   font-size: 16px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: border 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
+}
+
+[data-theme="light"] .form-group input,
+[data-theme="light"] .form-group select,
+[data-theme="light"] .form-group textarea {
   background: #fdfdff;
-  transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-group textarea {
@@ -125,7 +146,7 @@
   outline: none;
   border-color: #4c7dff;
   box-shadow: 0 0 0 3px rgba(76, 125, 255, 0.15);
-  background: #ffffff;
+  background: var(--bg-secondary);
 }
 
 .error {
@@ -143,26 +164,29 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 8px;
   overflow: hidden;
+  transition: background-color 0.3s ease;
 }
 
 .table th,
 .table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .table th {
-  background-color: #f8f9fa;
+  background-color: var(--bg-tertiary);
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .table tr:hover {
-  background-color: #f8f9fa;
+  background-color: var(--bg-tertiary);
 }
 
 .badge {
@@ -178,9 +202,19 @@
   color: #155724;
 }
 
+[data-theme="dark"] .badge-success {
+  background-color: #1e4620;
+  color: #81c784;
+}
+
 .badge-warning {
   background-color: #fff3cd;
   color: #856404;
+}
+
+[data-theme="dark"] .badge-warning {
+  background-color: #5d4037;
+  color: #ffb74d;
 }
 
 .badge-danger {
@@ -188,9 +222,29 @@
   color: #721c24;
 }
 
+[data-theme="dark"] .badge-danger {
+  background-color: #5a1a1a;
+  color: #e57373;
+}
+
 .badge-info {
   background-color: #d1ecf1;
   color: #0c5460;
+}
+
+[data-theme="dark"] .badge-info {
+  background-color: #1a3a3f;
+  color: #64b5f6;
+}
+
+.badge-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+[data-theme="dark"] .badge-secondary {
+  background-color: #495057;
+  color: #dee2e6;
 }
 
 .status-submitted {
@@ -272,25 +326,25 @@
   align-items: flex-start;
   margin-bottom: 30px;
   padding-bottom: 20px;
-  border-bottom: 2px solid #e0e0e0;
+  border-bottom: 2px solid var(--border-color);
 }
 
 .page-header h1 {
   margin: 0 0 5px 0;
   font-size: 28px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .page-subtitle {
   margin: 0;
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 14px;
 }
 
 .empty-state {
   padding: 40px;
   text-align: center;
-  color: #666;
+  color: var(--text-tertiary);
 }
 
 .empty-state p {

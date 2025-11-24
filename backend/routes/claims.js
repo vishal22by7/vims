@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const { body, validationResult } = require('express-validator');
 const Claim = require('../models/Claim');
 const ClaimPhoto = require('../models/ClaimPhoto');
@@ -11,6 +12,9 @@ const IPFSFile = require('../models/IPFSFile');
 const { auth } = require('../middleware/auth');
 const blockchainService = require('../services/blockchain');
 const ipfsService = require('../services/ipfs');
+
+// Service URLs
+const ML_ANALYZER_URL = process.env.ML_ANALYZER_URL || 'http://localhost:8000';
 
 const router = express.Router();
 
@@ -126,16 +130,34 @@ router.post('/submit', auth, upload.array('photos', 5), [
 
     await claim.save();
 
-    // Upload photos to IPFS
+    // Step 1: Upload photos to IPFS
     const photos = [];
-    const ipfsCids = [];
+    const evidenceCids = [];
+    let firstPhotoCID = null;
 
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         try {
           // Check if IPFS is available before attempting upload
           if (ipfsService.isAvailable && ipfsService.isAvailable()) {
-            const { cid, url } = await ipfsService.uploadFile(file.path, file.originalname);
+            const ipfsResult = await ipfsService.uploadFile(file.path, file.originalname);
+            
+            // If IPFS upload failed (returned null), continue without IPFS
+            if (!ipfsResult) {
+              console.warn('⚠️  IPFS upload failed, saving photo locally');
+              const claimPhoto = new ClaimPhoto({
+                claimId: claim._id,
+                ipfsCid: 'local-only',
+                url: `/uploads/${file.filename}`,
+                blockchainIncluded: false
+              });
+              await claimPhoto.save();
+              photos.push(claimPhoto);
+              fs.unlinkSync(file.path);
+              continue;
+            }
+            
+            const { cid, url } = ipfsResult;
 
             const claimPhoto = new ClaimPhoto({
               claimId: claim._id,
@@ -146,7 +168,12 @@ router.post('/submit', auth, upload.array('photos', 5), [
 
             await claimPhoto.save();
             photos.push(claimPhoto);
-            ipfsCids.push(cid);
+            evidenceCids.push(cid);
+            
+            // Store first photo CID for ML analysis
+            if (!firstPhotoCID) {
+              firstPhotoCID = cid;
+            }
 
             // Record IPFS file
             const ipfsFile = new IPFSFile({
@@ -189,16 +216,62 @@ router.post('/submit', auth, upload.array('photos', 5), [
       }
     }
 
-    // Write to blockchain
-    let blockchainResult = null;
-    if (blockchainService.isAvailable()) {
+    // Step 2: ML Analysis (if we have IPFS CIDs)
+    let mlReport = null;
+    if (firstPhotoCID) {
       try {
-        blockchainResult = await blockchainService.submitClaim(
+        console.log(`🔍 Requesting ML analysis for CID: ${firstPhotoCID}`);
+        const mlResponse = await axios.post(`${ML_ANALYZER_URL}/analyze`, {
+          ipfsCid: firstPhotoCID
+        }, {
+          timeout: 30000 // 30 second timeout
+        });
+        
+        mlReport = mlResponse.data;
+        
+        // Check if ML validation failed (non-vehicle image)
+        if (mlReport.is_vehicle === false || mlReport.validation_error) {
+          console.warn(`⚠️  ML Validation failed: ${mlReport.validation_error || 'Not a vehicle'}`);
+          // Mark claim with validation error but don't fail the submission
+          claim.mlValidationError = mlReport.validation_error || 'Image does not appear to be a vehicle';
+          claim.mlSeverity = 0;
+          claim.mlConfidence = 0;
+        } else {
+          claim.mlSeverity = mlReport.severity;
+          claim.mlReportCID = mlReport.mlReportCID || null;
+          claim.damageParts = mlReport.damage_parts || [];
+          claim.mlConfidence = mlReport.confidence || null;
+          console.log(`✅ ML Analysis complete: Severity=${mlReport.severity}, Confidence=${mlReport.confidence}`);
+        }
+      } catch (mlError) {
+        // Handle specific validation errors (400 status)
+        if (mlError.response && mlError.response.status === 400) {
+          const errorDetail = mlError.response.data?.detail || {};
+          console.warn(`⚠️  ML Validation failed: ${errorDetail.message || errorDetail.error || 'Invalid image'}`);
+          claim.mlValidationError = errorDetail.message || errorDetail.error || 'Image validation failed';
+          claim.mlSeverity = 0;
+          claim.mlConfidence = 0;
+        } else {
+          console.error('⚠️  ML Analysis error (non-fatal):', mlError.message);
+          // Continue without ML analysis for other errors
+        }
+      }
+    }
+
+    await claim.save();
+
+    // Step 3: Write to blockchain (enhanced contract with ML data)
+    let blockchainResult = null;
+    if (blockchainService.isAvailable() && evidenceCids.length > 0) {
+      try {
+        blockchainResult = await blockchainService.submitClaimWithML(
           claim._id.toString(),
           policyId,
           req.user._id.toString(),
           description,
-          ipfsCids
+          evidenceCids,
+          claim.mlReportCID || '',
+          Math.floor(claim.mlSeverity || 0)
         );
 
         claim.claimIdOnChain = claim._id.toString();
@@ -234,6 +307,12 @@ router.post('/submit', auth, upload.array('photos', 5), [
         ...claim.toObject(),
         photos
       },
+      mlAnalysis: mlReport ? {
+        severity: mlReport.severity,
+        damageParts: mlReport.damage_parts,
+        confidence: mlReport.confidence,
+        mlReportCID: mlReport.mlReportCID
+      } : null,
       blockchain: blockchainResult
     });
   } catch (error) {
@@ -249,6 +328,112 @@ router.post('/submit', auth, upload.array('photos', 5), [
     }
 
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Update claim from Oracle (called by Oracle service)
+router.patch('/:id/updateFromOracle', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, verified, payoutAmount, blockchainEvaluated } = req.body;
+
+    const claim = await Claim.findById(id);
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Claim not found' });
+    }
+
+    // Update claim fields
+    if (status) claim.status = status;
+    if (verified !== undefined) claim.verified = verified;
+    if (payoutAmount !== undefined) {
+      claim.payoutAmount = payoutAmount;
+      claim.payoutStatus = payoutAmount > 0 ? 'Approved' : 'Rejected';
+    }
+    if (blockchainEvaluated !== undefined) claim.blockchainEvaluated = blockchainEvaluated;
+
+    await claim.save();
+
+    res.json({
+      success: true,
+      message: 'Claim updated from Oracle',
+      claim
+    });
+  } catch (error) {
+    console.error('Update from Oracle error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Delete claim (user can delete their own claim, admin can delete any)
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const claim = await Claim.findById(req.params.id);
+    
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Claim not found' });
+    }
+
+    // Check if user owns this claim or is admin
+    if (claim.userId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Prevent deletion of approved claims (optional safety check)
+    if (claim.status === 'Approved' && req.user.role !== 'admin') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete an approved claim. Please contact admin if you need to remove it.'
+      });
+    }
+
+    // Get IPFS CIDs before deleting photos
+    const claimPhotos = await ClaimPhoto.find({ claimId: claim._id });
+    const ipfsCids = claimPhotos.map(photo => photo.ipfsCid).filter(cid => cid && cid !== 'local-only' && cid !== 'upload-failed');
+    
+    // Delete related photos
+    await ClaimPhoto.deleteMany({ claimId: claim._id });
+
+    // Delete blockchain records if exists
+    if (claim.blockchainTxHash) {
+      try {
+        await BlockchainRecord.deleteMany({ 
+          entityType: 'Claim', 
+          entityId: claim._id 
+        });
+      } catch (blockchainError) {
+        console.error('Error deleting blockchain records:', blockchainError);
+        // Continue with claim deletion even if blockchain record deletion fails
+      }
+    }
+
+    // Delete IPFS files associated with this claim
+    try {
+      if (ipfsCids.length > 0) {
+        await IPFSFile.deleteMany({ ipfsCid: { $in: ipfsCids } });
+      }
+      
+      // Also delete ML report CID if exists
+      if (claim.mlReportCID) {
+        await IPFSFile.deleteMany({ ipfsCid: claim.mlReportCID });
+      }
+    } catch (ipfsError) {
+      console.error('Error deleting IPFS records:', ipfsError);
+      // Continue with claim deletion even if IPFS record deletion fails
+    }
+
+    await Claim.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Claim deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete claim error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

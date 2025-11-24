@@ -53,6 +53,7 @@ export const policyAPI = {
   getAll: () => api.get('/policies'),
   getById: (id) => api.get(`/policies/${id}`),
   buy: (data) => api.post('/policies/buy', data),
+  delete: (id) => api.delete(`/policies/${id}`),
 };
 
 // Claim API
@@ -62,6 +63,7 @@ export const claimAPI = {
   submit: (formData) => api.post('/claims/submit', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  delete: (id) => api.delete(`/claims/${id}`),
 };
 
 // Calculator API

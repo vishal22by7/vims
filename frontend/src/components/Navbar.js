@@ -1,10 +1,12 @@
 import React, { useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import './Navbar.css';
 
 const Navbar = () => {
   const { isAuthenticated, user, logout } = useContext(AuthContext);
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -41,6 +43,14 @@ const Navbar = () => {
             )}
             
             <div className="navbar-user">
+              <button 
+                className="theme-toggle" 
+                onClick={toggleTheme}
+                title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+                aria-label="Toggle theme"
+              >
+                {theme === 'light' ? '🌙' : '☀️'}
+              </button>
               <span className="navbar-username">
                 {user?.name}
                 {user?.role === 'admin' && <span className="admin-badge">Admin</span>}

@@ -6,11 +6,12 @@
 }
 
 .stat-card {
-  background: white;
+  background: var(--bg-secondary);
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px var(--shadow);
   text-align: center;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .stat-card h3 {
@@ -20,7 +21,7 @@
 }
 
 .stat-card p {
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 14px;
 }
 
@@ -37,12 +38,13 @@
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .card-header h2 {
   margin: 0;
   font-size: 20px;
+  color: var(--text-primary);
 }
 
 .table-responsive {

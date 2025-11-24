@@ -72,7 +72,17 @@ const SubmitClaim = () => {
 
       const res = await claimAPI.submit(submitData);
       if (res.data.success) {
-        toast.success('Claim submitted successfully!');
+        const { mlAnalysis, blockchain } = res.data;
+        
+        let message = 'Claim submitted successfully!';
+        if (mlAnalysis) {
+          message += ` ML Analysis: Severity ${mlAnalysis.severity.toFixed(1)}/100`;
+        }
+        if (blockchain) {
+          message += ` | Blockchain: ${blockchain.txHash.substring(0, 10)}...`;
+        }
+        
+        toast.success(message, { autoClose: 5000 });
         navigate('/claims');
       }
     } catch (error) {

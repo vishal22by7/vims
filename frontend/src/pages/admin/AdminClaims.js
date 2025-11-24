@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { adminAPI } from '../../services/api';
+import { adminAPI, claimAPI } from '../../services/api';
 
 const AdminClaims = () => {
   const [claims, setClaims] = useState([]);
@@ -36,6 +36,20 @@ const AdminClaims = () => {
       toast.error(error.response?.data?.message || 'Failed to update claim status');
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleDelete = async (claimId) => {
+    if (!window.confirm('Are you sure you want to delete this claim? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await claimAPI.delete(claimId);
+      toast.success('Claim deleted successfully');
+      fetchClaims();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete claim');
     }
   };
 
@@ -130,22 +144,29 @@ const AdminClaims = () => {
                   </td>
                   <td>{new Date(claim.submittedAt).toLocaleDateString()}</td>
                   <td>
-                    {nextStatuses.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        {nextStatuses.map((status) => (
-                          <button
-                            key={status}
-                            className={`btn btn-sm ${status === 'Approved' ? 'btn-success' : 'btn-danger'}`}
-                            onClick={() => handleStatusUpdate(claim._id, status)}
-                            disabled={updating === claim._id}
-                          >
-                            {updating === claim._id ? 'Updating...' : `Mark as ${status}`}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="badge badge-secondary">No actions</span>
-                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      {nextStatuses.length > 0 && (
+                        <>
+                          {nextStatuses.map((status) => (
+                            <button
+                              key={status}
+                              className={`btn btn-sm ${status === 'Approved' ? 'btn-success' : 'btn-danger'}`}
+                              onClick={() => handleStatusUpdate(claim._id, status)}
+                              disabled={updating === claim._id}
+                            >
+                              {updating === claim._id ? 'Updating...' : `Mark as ${status}`}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDelete(claim._id)}
+                        title="Delete Claim"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

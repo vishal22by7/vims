@@ -108,7 +108,12 @@ const Dashboard = () => {
                   {policies.slice(0, 5).map((policy) => (
                     <tr key={policy._id}>
                       <td>{policy.policyTypeId?.name || 'N/A'}</td>
-                      <td>{policy.vehicleBrand} {policy.vehicleModel} ({policy.modelYear})</td>
+                      <td>
+                        {policy.vehicleBrand} {policy.vehicleModel} ({policy.modelYear})
+                        {policy.registrationNumber && (
+                          <><br /><small style={{ color: '#666' }}>Reg: {policy.registrationNumber}</small></>
+                        )}
+                      </td>
                       <td>{formatCurrency(policy.premium)}</td>
                       <td>
                         <span className={`badge ${new Date(policy.endDate) > new Date() ? 'badge-success' : 'badge-danger'}`}>
