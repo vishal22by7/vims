@@ -20,7 +20,7 @@ const claimSchema = new mongoose.Schema({
     default: null
   },
   claimIdOnChain: {
-    type: Number,
+    type: String,
     default: null
   },
   status: {

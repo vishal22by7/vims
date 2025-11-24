@@ -5,10 +5,27 @@ import { claimAPI } from '../services/api';
 const Claims = () => {
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [mlReports, setMlReports] = useState({}); // Store ML reports by claim ID
 
   useEffect(() => {
     fetchClaims();
+    
+    // Auto-refresh every 5 seconds to update blockchain/ML status
+    const interval = setInterval(() => {
+      fetchClaims();
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    // Fetch ML reports for claims that have mlReportCID
+    claims.forEach(claim => {
+      if (claim.mlReportCID && !mlReports[claim._id]) {
+        fetchMLReport(claim._id);
+      }
+    });
+  }, [claims]);
 
   const fetchClaims = async () => {
     try {
@@ -20,6 +37,22 @@ const Claims = () => {
       toast.error('Failed to load claims');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMLReport = async (claimId) => {
+    try {
+      const res = await claimAPI.getMLReport(claimId);
+      if (res.data.success) {
+        setMlReports(prev => ({
+          ...prev,
+          [claimId]: res.data.mlReport
+        }));
+        console.log(`✅ ML Report fetched for claim ${claimId}. Severity: ${res.data.mlReport.severity}`);
+      }
+    } catch (error) {
+      console.error(`Failed to fetch ML report for claim ${claimId}:`, error);
+      // Don't show toast for this, just log it
     }
   };
 

@@ -128,10 +128,11 @@ contract VehicleInsurance {
         uint256 premium,
         uint256 startDate,
         uint256 endDate
-    ) public {
+    ) public payable {
         require(!policyExists[policyId], "Policy already exists");
         require(startDate < endDate, "Invalid date range");
         require(premium > 0, "Premium must be greater than 0");
+        require(msg.value == premium, "Premium payment mismatch");
 
         Policy memory newPolicy = Policy({
             policyId: policyId,

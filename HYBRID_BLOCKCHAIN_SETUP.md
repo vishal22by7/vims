@@ -113,6 +113,11 @@ IPFS_GATEWAY_URL=http://localhost:8080/ipfs
 FRONTEND_URL=http://localhost:3000
 PORT=5000
 NODE_ENV=development
+# Optional Pinata (set JWT or API key/secret to use Pinata uploads)
+PINATA_JWT=
+PINATA_API_KEY=
+PINATA_SECRET_API_KEY=
+PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
 ```
 
 #### Oracle Service (.env)
@@ -129,9 +134,17 @@ BACKEND_ADMIN_TOKEN=optional-admin-token-for-backend-api
 
 #### ML Analyzer (.env)
 ```env
-IPFS_GATEWAY_URL=http://localhost:8080/ipfs
+IPFS_GATEWAY_URL=https://gateway.pinata.cloud/ipfs
 IPFS_API_URL=http://localhost:5001/api/v0
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
+
+**To get Gemini API Key:**
+1. Go to https://aistudio.google.com/app/apikey
+2. Click "Create API Key"
+3. Copy the key and paste it in `.env`
+
+> **Pinata option:** If you prefer a hosted gateway instead of running the IPFS daemon locally, set `PINATA_JWT` (or `PINATA_API_KEY` + `PINATA_SECRET_API_KEY`) in the backend `.env`. The backend will automatically pin claim photos to Pinata and use `PINATA_GATEWAY` for all public links.
 
 ### Step 3: Start Hardhat Blockchain
 

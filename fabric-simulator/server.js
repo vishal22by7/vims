@@ -6,7 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const level = require('level');
+const { Level } = require('level');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -19,7 +19,7 @@ try {
   if (!fs.existsSync(dbPath)) {
     fs.mkdirSync(dbPath, { recursive: true });
   }
-  db = level(dbPath, { valueEncoding: 'json' });
+  db = new Level(dbPath, { valueEncoding: 'json' });
   console.log('✅ Private ledger (LevelDB) initialized');
 } catch (error) {
   console.error('❌ Failed to initialize LevelDB:', error);

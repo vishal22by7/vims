@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { policyAPI, calculatorAPI } from '../services/api';
@@ -50,7 +50,7 @@ const BuyPolicy = () => {
     });
   };
 
-  const calculatePremium = async () => {
+  const calculatePremium = useCallback(async () => {
     if (!formData.policyTypeId || !formData.vehicleType || !formData.engineCapacity) {
       return;
     }
@@ -66,11 +66,11 @@ const BuyPolicy = () => {
     } catch (error) {
       console.error('Premium calculation error:', error);
     }
-  };
+  }, [formData.policyTypeId, formData.vehicleType, formData.modelYear, formData.engineCapacity, formData.addOns]);
 
   useEffect(() => {
     calculatePremium();
-  }, [formData.policyTypeId, formData.vehicleType, formData.modelYear, formData.engineCapacity, formData.addOns]);
+  }, [calculatePremium]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

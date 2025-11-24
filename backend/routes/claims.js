@@ -16,6 +16,12 @@ const ipfsService = require('../services/ipfs');
 // Service URLs
 const ML_ANALYZER_URL = process.env.ML_ANALYZER_URL || 'http://localhost:8000';
 
+// Uploads directory
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const router = express.Router();
 
 // Configure multer for file uploads
@@ -97,6 +103,62 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
+// Get ML report from Pinata using CID
+router.get('/:id/ml-report', auth, async (req, res) => {
+  try {
+    const claim = await Claim.findById(req.params.id);
+
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Claim not found' });
+    }
+
+    // Check if user owns this claim or is admin
+    if (claim.userId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    if (!claim.mlReportCID) {
+      return res.status(404).json({ success: false, message: 'ML report CID not found' });
+    }
+
+    // Fetch ML report from Pinata gateway
+    const pinataGateway = process.env.PINATA_GATEWAY || 'https://gateway.pinata.cloud/ipfs';
+    const reportUrl = `${pinataGateway}/${claim.mlReportCID}`;
+    
+    console.log(`📥 Fetching ML report from Pinata: ${reportUrl}`);
+    
+    try {
+      const response = await axios.get(reportUrl, { timeout: 10000 });
+      const mlReport = response.data;
+      
+      console.log(`✅ ML report fetched successfully. Severity: ${mlReport.severity}`);
+      
+      res.json({
+        success: true,
+        mlReport: {
+          severity: mlReport.severity,
+          damage_parts: mlReport.damage_parts || [],
+          confidence: mlReport.confidence,
+          timestamp: mlReport.timestamp,
+          is_vehicle: mlReport.is_vehicle,
+          validation_error: mlReport.validation_error,
+          fullReport: mlReport // Include full report for debugging
+        }
+      });
+    } catch (fetchError) {
+      console.error('Error fetching ML report from Pinata:', fetchError.message);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to fetch ML report from Pinata',
+        error: fetchError.message 
+      });
+    }
+  } catch (error) {
+    console.error('Get ML report error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // Submit claim with photos
 router.post('/submit', auth, upload.array('photos', 5), [
   body('policyId').notEmpty().withMessage('Policy ID is required'),
@@ -130,76 +192,74 @@ router.post('/submit', auth, upload.array('photos', 5), [
 
     await claim.save();
 
-    // Step 1: Upload photos to IPFS
+    // Step 1: Upload photos to IPFS AND keep local copy
     const photos = [];
     const evidenceCids = [];
     let firstPhotoCID = null;
+    let firstPhotoPath = null; // Keep path for direct Gemini upload
 
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         try {
-          // Check if IPFS is available before attempting upload
+          // Step 1a: Upload to IPFS (if available)
+          let ipfsCid = null;
+          let ipfsUrl = null;
+          
           if (ipfsService.isAvailable && ipfsService.isAvailable()) {
             const ipfsResult = await ipfsService.uploadFile(file.path, file.originalname);
             
-            // If IPFS upload failed (returned null), continue without IPFS
-            if (!ipfsResult) {
-              console.warn('⚠️  IPFS upload failed, saving photo locally');
-              const claimPhoto = new ClaimPhoto({
-                claimId: claim._id,
-                ipfsCid: 'local-only',
-                url: `/uploads/${file.filename}`,
-                blockchainIncluded: false
+            if (ipfsResult) {
+              ipfsCid = ipfsResult.cid;
+              ipfsUrl = ipfsResult.url;
+              evidenceCids.push(ipfsCid);
+              console.log(`✅ Photo uploaded to IPFS: ${ipfsCid}`);
+              
+              // Store first photo CID for ML analysis
+              if (!firstPhotoCID) {
+                firstPhotoCID = ipfsCid;
+                firstPhotoPath = file.path; // Keep path for direct Gemini upload
+              }
+
+              // Record IPFS file
+              const ipfsFile = new IPFSFile({
+                ipfsCid: ipfsCid,
+                fileType: 'claim-photo',
+                uploadedBy: req.user._id
               });
-              await claimPhoto.save();
-              photos.push(claimPhoto);
-              fs.unlinkSync(file.path);
-              continue;
+              await ipfsFile.save().catch(() => {}); // Ignore duplicate errors
+            } else {
+              console.warn('⚠️  IPFS upload failed, continuing with local storage');
             }
-            
-            const { cid, url } = ipfsResult;
-
-            const claimPhoto = new ClaimPhoto({
-              claimId: claim._id,
-              ipfsCid: cid,
-              url,
-              blockchainIncluded: false
-            });
-
-            await claimPhoto.save();
-            photos.push(claimPhoto);
-            evidenceCids.push(cid);
-            
-            // Store first photo CID for ML analysis
-            if (!firstPhotoCID) {
-              firstPhotoCID = cid;
-            }
-
-            // Record IPFS file
-            const ipfsFile = new IPFSFile({
-              ipfsCid: cid,
-              fileType: 'claim-photo',
-              uploadedBy: req.user._id
-            });
-            await ipfsFile.save().catch(() => {}); // Ignore duplicate errors
           } else {
-            // IPFS not available, save photo info without IPFS
-            console.warn('⚠️  IPFS not available, saving photo without IPFS CID');
-            const claimPhoto = new ClaimPhoto({
-              claimId: claim._id,
-              ipfsCid: 'local-only',
-              url: `/uploads/${file.filename}`,
-              blockchainIncluded: false
-            });
-            await claimPhoto.save();
-            photos.push(claimPhoto);
+            console.warn('⚠️  IPFS not available, using local storage only');
           }
 
-          // Clean up temp file
-          fs.unlinkSync(file.path);
-        } catch (ipfsError) {
-          console.error('IPFS upload error:', ipfsError);
-          // Continue even if IPFS fails - save photo info anyway
+          // Step 1b: Save local copy (move from temp to permanent location)
+          const permanentPath = path.join(uploadsDir, `${claim._id}_${file.filename}`);
+          fs.copyFileSync(file.path, permanentPath);
+          
+          // Store first photo path for Gemini analysis
+          if (!firstPhotoPath) {
+            firstPhotoPath = permanentPath;
+          }
+
+          // Step 1c: Save photo record in database
+          const claimPhoto = new ClaimPhoto({
+            claimId: claim._id,
+            ipfsCid: ipfsCid || 'local-only',
+            url: ipfsUrl || `/uploads/${claim._id}_${file.filename}`,
+            blockchainIncluded: false
+          });
+          await claimPhoto.save();
+          photos.push(claimPhoto);
+
+          // Clean up temp file (we have permanent copy now)
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (error) {
+          console.error('Photo processing error:', error);
+          // Save photo record even if IPFS/local save failed
           try {
             const claimPhoto = new ClaimPhoto({
               claimId: claim._id,
@@ -216,33 +276,40 @@ router.post('/submit', auth, upload.array('photos', 5), [
       }
     }
 
-    // Step 2: ML Analysis (if we have IPFS CIDs)
+    // Step 2: ML Analysis - Send image directly to Gemini (bypass IPFS)
     let mlReport = null;
-    if (firstPhotoCID) {
+    if (firstPhotoPath && fs.existsSync(firstPhotoPath)) {
       try {
-        console.log(`🔍 Requesting ML analysis for CID: ${firstPhotoCID}`);
-        const mlResponse = await axios.post(`${ML_ANALYZER_URL}/analyze`, {
-          ipfsCid: firstPhotoCID
-        }, {
-          timeout: 30000 // 30 second timeout
+        console.log(`🔍 Sending image directly to Gemini for analysis: ${firstPhotoPath}`);
+        const FormData = require('form-data');
+        const formData = new FormData();
+        formData.append('file', fs.createReadStream(firstPhotoPath), path.basename(firstPhotoPath));
+        
+        const mlResponse = await axios.post(`${ML_ANALYZER_URL}/analyze/upload`, formData, {
+          headers: formData.getHeaders(),
+          timeout: 30000
         });
+        console.log(`✅ ML analysis via direct upload successful`);
         
-        mlReport = mlResponse.data;
-        
-        // Check if ML validation failed (non-vehicle image)
-        if (mlReport.is_vehicle === false || mlReport.validation_error) {
-          console.warn(`⚠️  ML Validation failed: ${mlReport.validation_error || 'Not a vehicle'}`);
-          // Mark claim with validation error but don't fail the submission
-          claim.mlValidationError = mlReport.validation_error || 'Image does not appear to be a vehicle';
-          claim.mlSeverity = 0;
-          claim.mlConfidence = 0;
-        } else {
-          claim.mlSeverity = mlReport.severity;
-          claim.mlReportCID = mlReport.mlReportCID || null;
-          claim.damageParts = mlReport.damage_parts || [];
-          claim.mlConfidence = mlReport.confidence || null;
-          console.log(`✅ ML Analysis complete: Severity=${mlReport.severity}, Confidence=${mlReport.confidence}`);
+        if (mlResponse && mlResponse.data) {
+          mlReport = mlResponse.data;
+          
+          // Check if ML validation failed (non-vehicle image)
+          if (mlReport.is_vehicle === false || mlReport.validation_error) {
+            console.warn(`⚠️  ML Validation failed: ${mlReport.validation_error || 'Not a vehicle'}`);
+            // Mark claim with validation error but don't fail the submission
+            claim.mlValidationError = mlReport.validation_error || 'Image does not appear to be a vehicle';
+            claim.mlSeverity = 0;
+            claim.mlConfidence = 0;
+          } else {
+            claim.mlSeverity = mlReport.severity;
+            claim.mlReportCID = mlReport.mlReportCID || null;
+            claim.damageParts = mlReport.damage_parts || [];
+            claim.mlConfidence = mlReport.confidence || null;
+            console.log(`✅ ML Analysis complete: Severity=${mlReport.severity}, Confidence=${mlReport.confidence}`);
+          }
         }
+      } catch (mlError) {
       } catch (mlError) {
         // Handle specific validation errors (400 status)
         if (mlError.response && mlError.response.status === 400) {
@@ -327,6 +394,30 @@ router.post('/submit', auth, upload.array('photos', 5), [
       });
     }
 
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Get claim for Oracle (no auth required, internal service call)
+router.get('/:id/oracle', async (req, res) => {
+  try {
+    const claim = await Claim.findById(req.params.id)
+      .populate('policyId')
+      .populate('userId', 'name email');
+
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Claim not found' });
+    }
+
+    res.json({
+      success: true,
+      claim: {
+        ...claim.toObject(),
+        severity: claim.mlSeverity || 0
+      }
+    });
+  } catch (error) {
+    console.error('Get claim for Oracle error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

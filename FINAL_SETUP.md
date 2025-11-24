@@ -53,6 +53,12 @@ This installs dependencies for the root project, backend, frontend, and smart-co
    IPFS_API_URL=http://localhost:5001
    IPFS_GATEWAY_URL=http://localhost:8080/ipfs
    FRONTEND_URL=http://localhost:3000
+   FIAT_PER_ETH=250000
+   # Optional Pinata config (set either JWT or API key/secret)
+   PINATA_JWT=
+   PINATA_API_KEY=
+   PINATA_SECRET_API_KEY=
+   PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
    ```
 
    > Replace username/password/cluster host with your own values. If you are not using blockchain or IPFS, leave placeholders; backend will disable those features gracefully.
@@ -107,6 +113,11 @@ If you want blockchain logging:
    ```env
    BLOCKCHAIN_PRIVATE_KEY=<one of the private keys shown when node started>
    SMART_CONTRACT_ADDRESS=<address from deployment>
+   FIAT_PER_ETH=250000  # INR amount equivalent to 1 ETH for premium conversion
+   # Optional Pinata config
+   PINATA_JWT=
+   PINATA_API_KEY=
+   PINATA_SECRET_API_KEY=
    ```
 
 If you skip these steps, blockchain features remain disabled but the app still works.

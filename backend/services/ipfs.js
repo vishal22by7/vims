@@ -1,5 +1,8 @@
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const FormData = require('form-data');
+const { Readable } = require('stream');
 
 // IPFS client is optional - handle import gracefully
 // ipfs-http-client v60+ is ESM-only, so we use dynamic import()
@@ -38,11 +41,23 @@ class IPFSService {
     const baseApiUrl = process.env.IPFS_API_URL || 'http://localhost:5001';
     this.apiUrl = baseApiUrl.includes('/api/v0') ? baseApiUrl : `${baseApiUrl}/api/v0`;
     this.gatewayUrl = process.env.IPFS_GATEWAY_URL || 'http://localhost:8080/ipfs';
+    this.pinataApiKey = process.env.PINATA_API_KEY || null;
+    this.pinataSecretApiKey = process.env.PINATA_SECRET_API_KEY || null;
+    this.pinataJWT = process.env.PINATA_JWT || null;
+    this.pinataGateway = process.env.PINATA_GATEWAY || 'https://gateway.pinata.cloud/ipfs';
+    this.usePinata = Boolean(this.pinataJWT || (this.pinataApiKey && this.pinataSecretApiKey));
     this.ipfsAvailable = false;
     this.initialized = false;
     
-    // Start loading IPFS client asynchronously
-    this.initialize();
+    if (this.usePinata) {
+      this.ipfsAvailable = true;
+      this.initialized = true;
+      console.log('✅ IPFS service configured to use Pinata');
+      console.log('   Uploads will be pinned via Pinata API');
+    } else {
+      // Start loading IPFS client asynchronously
+      this.initialize();
+    }
   }
 
   async initialize() {
@@ -112,29 +127,16 @@ class IPFSService {
       await this.initialize();
     }
     
+    if (this.usePinata) {
+      return this.uploadViaPinata(fs.createReadStream(filePath), fileName);
+    }
+
     if (!this.ipfsAvailable || !this.ipfs) {
-      // IPFS not available - return null to indicate failure
-      // This allows the system to continue without IPFS
       console.warn('⚠️  IPFS not available, skipping upload');
       return null;
     }
     
-    try {
-      const fileBuffer = fs.readFileSync(filePath);
-      const result = await this.ipfs.add({
-        path: fileName,
-        content: fileBuffer
-      });
-
-      const cid = result.cid.toString();
-      const url = `${this.gatewayUrl}/${cid}`;
-
-      return { cid, url };
-    } catch (error) {
-      console.error('IPFS upload error:', error.message);
-      // Return null instead of throwing - allows graceful degradation
-      return null;
-    }
+    return this.uploadViaLocalIPFS(fs.readFileSync(filePath), fileName);
   }
 
   async uploadBuffer(buffer, fileName) {
@@ -143,16 +145,68 @@ class IPFSService {
       await this.initialize();
     }
     
+    if (this.usePinata) {
+      const stream = Readable.from(buffer);
+      return this.uploadViaPinata(stream, fileName);
+    }
+
     if (!this.ipfsAvailable || !this.ipfs) {
-      // IPFS not available - return null to indicate failure
       console.warn('⚠️  IPFS not available, skipping upload');
       return null;
     }
     
+    return this.uploadViaLocalIPFS(buffer, fileName);
+  }
+  
+  isAvailable() {
+    return this.usePinata || (this.ipfsAvailable && this.ipfs !== null);
+  }
+
+  getGatewayUrl(cid) {
+    return `${this.gatewayUrl}/${cid}`;
+  }
+
+  async uploadViaPinata(stream, fileName) {
+    try {
+      const formData = new FormData();
+      formData.append('file', stream, { filename: fileName });
+      formData.append('pinataMetadata', JSON.stringify({ name: fileName }));
+      formData.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
+      
+      const headers = {
+        ...formData.getHeaders()
+      };
+
+      if (this.pinataJWT) {
+        headers.Authorization = `Bearer ${this.pinataJWT}`;
+      } else {
+        headers.pinata_api_key = this.pinataApiKey;
+        headers.pinata_secret_api_key = this.pinataSecretApiKey;
+      }
+
+      const response = await axios.post(
+        'https://api.pinata.cloud/pinning/pinFileToIPFS',
+        formData,
+        {
+          headers,
+          maxBodyLength: Infinity
+        }
+      );
+
+      const cid = response.data.IpfsHash;
+      const gatewayBase = this.pinataGateway.replace(/\/$/, '');
+      return { cid, url: `${gatewayBase}/${cid}` };
+    } catch (error) {
+      console.error('Pinata upload error:', error.response?.data || error.message);
+      return null;
+    }
+  }
+
+  async uploadViaLocalIPFS(content, fileName) {
     try {
       const result = await this.ipfs.add({
         path: fileName,
-        content: buffer
+        content
       });
 
       const cid = result.cid.toString();
@@ -161,17 +215,8 @@ class IPFSService {
       return { cid, url };
     } catch (error) {
       console.error('IPFS upload error:', error.message);
-      // Return null instead of throwing - allows graceful degradation
       return null;
     }
-  }
-  
-  isAvailable() {
-    return this.ipfsAvailable && this.ipfs !== null;
-  }
-
-  getGatewayUrl(cid) {
-    return `${this.gatewayUrl}/${cid}`;
   }
 }
 

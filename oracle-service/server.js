@@ -60,6 +60,9 @@ async function initBlockchain() {
   }
 }
 
+// Track processed claims to avoid duplicates
+const processedClaims = new Set();
+
 // Listen to ClaimSubmitted events
 function startEventListening() {
   if (!contract) return;
@@ -67,22 +70,116 @@ function startEventListening() {
   console.log('👂 Listening for ClaimSubmitted events...');
 
   try {
-    contract.on('ClaimSubmitted', async (claimId, policyId, userId, description, evidenceCids, mlReportCID, severity, timestamp, event) => {
+    // Use contract.on() directly - this is the correct way in ethers v6
+    contract.on('ClaimSubmitted', async (...args) => {
       try {
-        console.log(`\n🔔 New claim submitted: ${claimId}`);
-        console.log(`   Policy: ${policyId}, User: ${userId}`);
-        console.log(`   Severity: ${severity}, ML Report: ${mlReportCID}`);
+        // Extract values - last arg is the event object
+        const event = args[args.length - 1];
+        const claimId = args[0];
+        const policyId = args[1];
+        const userId = args[2];
+        const severity = args[6];
+
+        const claimIdStr = String(claimId || '').trim();
+        if (!claimIdStr || claimIdStr === '[object Object]') {
+          console.warn('Invalid claimId from event:', claimId);
+          return;
+        }
         
-        await processClaim(claimId.toString(), policyId.toString(), userId.toString(), severity.toString());
+        // Skip if already processed
+        if (processedClaims.has(claimIdStr)) {
+          return;
+        }
+        processedClaims.add(claimIdStr);
+
+        console.log(`\n🔔 New claim submitted: ${claimIdStr}`);
+        console.log(`   Policy: ${String(policyId || '')}, User: ${String(userId || '')}`);
+        console.log(`   Severity: ${String(severity || '0')}`);
+        
+        await processClaim(
+          claimIdStr,
+          String(policyId || ''),
+          String(userId || ''),
+          String(severity || '0')
+        );
       } catch (error) {
-        console.error(`❌ Error processing claim ${claimId}:`, error);
+        console.error(`❌ Error processing claim event:`, error.message || error);
       }
     });
+
+    // Also set up polling fallback for reliability
+    startPollingFallback();
   } catch (error) {
     console.error('❌ Error setting up event listener:', error.message);
-    console.log('⚠️  Event listener setup failed. Oracle will not process claims automatically.');
-    console.log('   You can manually trigger processing via: POST /process/:claimId');
+    console.log('⚠️  Event listener setup failed. Using polling fallback.');
+    startPollingFallback();
   }
+}
+
+// Polling fallback - checks for new claims every 10 seconds
+let lastBlockChecked = 0;
+async function startPollingFallback() {
+  if (!contract || !provider) return;
+
+  console.log('📡 Starting polling fallback (checks every 10 seconds)...');
+
+  setInterval(async () => {
+    try {
+      const currentBlock = await provider.getBlockNumber();
+      if (lastBlockChecked === 0) {
+        lastBlockChecked = currentBlock - 1; // Start from previous block
+      }
+
+      if (currentBlock > lastBlockChecked) {
+        const filter = contract.filters.ClaimSubmitted();
+        const logs = await contract.queryFilter(filter, lastBlockChecked + 1, currentBlock);
+        
+        for (const log of logs) {
+          try {
+            // Parse the log - args is an array in ethers v6
+            const parsed = contract.interface.parseLog(log);
+            if (!parsed || !parsed.args) {
+              console.warn('Could not parse log:', log);
+              continue;
+            }
+
+            // Extract values - args can be an array or object
+            const args = parsed.args;
+            const claimId = args.claimId || args[0];
+            const policyId = args.policyId || args[1];
+            const userId = args.userId || args[2];
+            const severity = args.severity || args[6];
+
+            const claimIdStr = String(claimId || '').trim();
+            if (!claimIdStr || claimIdStr === '[object Object]') {
+              console.warn('Invalid claimId from log:', claimId);
+              continue;
+            }
+
+            if (!processedClaims.has(claimIdStr)) {
+              processedClaims.add(claimIdStr);
+              console.log(`\n🔔 [Polling] New claim found: ${claimIdStr}`);
+              await processClaim(
+                claimIdStr,
+                String(policyId || ''),
+                String(userId || ''),
+                String(severity || '0')
+              );
+            }
+          } catch (parseError) {
+            console.error('Error parsing log:', parseError.message || parseError);
+          }
+        }
+
+        lastBlockChecked = currentBlock;
+      }
+    } catch (pollError) {
+      // Silently handle polling errors to avoid spam
+      if (pollError.message && !pollError.message.includes('rate limit')) {
+        console.error('Polling error:', pollError.message);
+      }
+    }
+  }, 10000); // Poll every 10 seconds
 }
 
 /**
@@ -161,18 +258,17 @@ async function processClaim(claimId, policyId, userId, severity) {
 }
 
 /**
- * Get claim from backend API
+ * Get claim from backend API (using oracle endpoint - no auth required)
  */
 async function getClaimFromBackend(claimId) {
   try {
-    const response = await axios.get(`${BACKEND_URL}/api/claims/${claimId}`, {
-      headers: {
-        'Authorization': `Bearer ${process.env.BACKEND_ADMIN_TOKEN || ''}`
-      }
-    });
-    return response.data.claim;
+    const response = await axios.get(`${BACKEND_URL}/api/claims/${claimId}/oracle`);
+    if (response.data.success) {
+      return response.data.claim;
+    }
+    return null;
   } catch (error) {
-    console.error('Error fetching claim from backend:', error.message);
+    console.error('Error fetching claim from backend:', error.response?.status, error.response?.data?.message || error.message);
     return null;
   }
 }

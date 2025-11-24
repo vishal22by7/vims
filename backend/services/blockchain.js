@@ -6,6 +6,34 @@ const fs = require('fs');
 let InsuranceLedger = null;
 let VehicleInsurance = null;
 
+const logBlockchainTx = (label, entityId, tx, receipt, extra = '') => {
+  const valueWei = typeof tx.value === 'bigint' ? tx.value : 0n;
+  const valueStr = valueWei === 0n
+    ? 'value=0 ETH (state update only)'
+    : `value=${ethers.formatEther(valueWei)} ETH`;
+
+  const gasPrice = tx.gasPrice ?? tx.maxFeePerGas ?? 0n;
+  const feeStr = gasPrice > 0n
+    ? `fee≈${ethers.formatEther(receipt.gasUsed * gasPrice)} ETH`
+    : null;
+
+  const parts = [
+    `${label} blockchain tx confirmed`,
+    `id=${entityId}`,
+    `txHash=${receipt.hash}`,
+    valueStr
+  ];
+
+  if (feeStr) {
+    parts.push(feeStr);
+  }
+  if (extra) {
+    parts.push(extra);
+  }
+
+  console.log(`🔗 ${parts.join(' | ')}`);
+};
+
 const ledgerPath = path.join(__dirname, '../../smart-contracts/artifacts/contracts/InsuranceLedger.sol/InsuranceLedger.json');
 const vehiclePath = path.join(__dirname, '../../smart-contracts/artifacts/contracts/VehicleInsurance.sol/VehicleInsurance.json');
 
@@ -22,6 +50,11 @@ class BlockchainService {
     this.wallet = null;
     this.contract = null;
     this.contractAddress = process.env.SMART_CONTRACT_ADDRESS;
+    this.fiatPerEth = parseFloat(process.env.FIAT_PER_ETH || '250000');
+    if (!Number.isFinite(this.fiatPerEth) || this.fiatPerEth <= 0) {
+      console.warn('⚠️  Invalid FIAT_PER_ETH value, defaulting to 250000');
+      this.fiatPerEth = 250000;
+    }
     this.init();
   }
 
@@ -79,21 +112,43 @@ class BlockchainService {
     }
   }
 
+  getPremiumWei(premiumFiat) {
+    const fiatValue = Number(premiumFiat);
+    if (!Number.isFinite(fiatValue) || fiatValue <= 0) {
+      throw new Error('Invalid fiat premium value');
+    }
+
+    const ethValue = fiatValue / this.fiatPerEth;
+    const ethStr = ethValue.toFixed(18);
+    return ethers.parseUnits(ethStr, 18);
+  }
+
   async issuePolicy(policyId, userId, premium, startDate, endDate) {
     try {
       if (!this.contract) {
         throw new Error('Smart contract not initialized');
       }
 
+      const premiumWei = this.getPremiumWei(premium);
+      const premiumEth = Number(premium) / this.fiatPerEth;
+
       const tx = await this.contract.issuePolicy(
         policyId,
         userId,
-        ethers.parseEther(premium.toString()),
+        premiumWei,
         Math.floor(new Date(startDate).getTime() / 1000),
-        Math.floor(new Date(endDate).getTime() / 1000)
+        Math.floor(new Date(endDate).getTime() / 1000),
+        { value: premiumWei }
       );
 
       const receipt = await tx.wait();
+      logBlockchainTx(
+        'Policy',
+        policyId,
+        tx,
+        receipt,
+        `premiumFiat=${premium} INR | premiumEth=${premiumEth.toFixed(6)} ETH`
+      );
       
       return {
         txHash: receipt.hash,
@@ -121,6 +176,7 @@ class BlockchainService {
       );
 
       const receipt = await tx.wait();
+      logBlockchainTx('Claim', claimId, tx, receipt);
       
       return {
         txHash: receipt.hash,
@@ -152,6 +208,7 @@ class BlockchainService {
         );
 
         const receipt = await tx.wait();
+        logBlockchainTx('Claim (ML)', claimId, tx, receipt, `severity=${severity || 0}`);
         
         return {
           txHash: receipt.hash,
