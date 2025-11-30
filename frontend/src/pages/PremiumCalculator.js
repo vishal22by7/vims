@@ -187,14 +187,24 @@ const PremiumCalculator = () => {
                 type="text"
                 name="chassisNumber"
                 value={formData.chassisNumber}
-                onChange={handleChange}
-                placeholder="e.g., ABC1234567890XYZ"
+                onChange={(e) => {
+                  const cleaned = e.target.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '').slice(0, 17);
+                  handleChange({ target: { name: 'chassisNumber', value: cleaned } });
+                }}
+                placeholder="e.g., MAH1A2B3C4D5E6F7G"
                 style={{ textTransform: 'uppercase' }}
+                maxLength={17}
+                pattern="[A-HJ-NPR-Z0-9]{17}"
                 required
               />
               <small style={{ color: '#666', fontSize: '0.9em' }}>
-                Enter your vehicle's unique chassis/VIN number
+                Enter 17-character VIN (alphanumeric, no I, O, Q). Example: MAH1A2B3C4D5E6F7G
               </small>
+              {formData.chassisNumber && formData.chassisNumber.length !== 17 && (
+                <small style={{ color: '#dc3545', fontSize: '0.9em', display: 'block', marginTop: '4px' }}>
+                  Chassis number must be exactly 17 characters
+                </small>
+              )}
             </div>
 
             {availableAddOns.length > 0 && (

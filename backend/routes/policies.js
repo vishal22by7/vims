@@ -1,4 +1,7 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { body, validationResult } = require('express-validator');
 const Policy = require('../models/Policy');
 const PolicyType = require('../models/PolicyType');
@@ -7,6 +10,40 @@ const IPFSFile = require('../models/IPFSFile');
 const { auth } = require('../middleware/auth');
 const blockchainService = require('../services/blockchain');
 const ipfsService = require('../services/ipfs');
+
+// Configure multer for document uploads
+const uploadsDir = path.join(__dirname, '../uploads/policies');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, `${uniqueSuffix}-${file.originalname}`);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|pdf/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype) || file.mimetype === 'application/pdf';
+
+    if (extname || mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPG, PNG, and PDF files are allowed'));
+    }
+  }
+});
 
 const router = express.Router();
 
@@ -67,8 +104,26 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
+// Helper function to validate chassis number (17 chars, no I, O, Q)
+function validateChassisNumber(chassisNumber) {
+  if (!chassisNumber || typeof chassisNumber !== 'string') {
+    return false;
+  }
+  const cleaned = chassisNumber.toUpperCase().trim();
+  if (cleaned.length !== 17) {
+    return false;
+  }
+  // VIN pattern: 17 alphanumeric characters, excluding I, O, Q
+  const vinPattern = /^[A-HJ-NPR-Z0-9]{17}$/;
+  return vinPattern.test(cleaned);
+}
+
 // Buy policy
-router.post('/buy', auth, [
+router.post('/buy', auth, upload.fields([
+  { name: 'rcDocument', maxCount: 1 },
+  { name: 'insuranceDocument', maxCount: 1 },
+  { name: 'drivingLicense', maxCount: 1 }
+]), [
   body('policyTypeId').notEmpty().withMessage('Policy type is required'),
   body('premium').isFloat({ min: 0 }).withMessage('Premium is required'),
   body('startDate').isISO8601().withMessage('Valid start date is required'),
@@ -98,8 +153,19 @@ router.post('/buy', auth, [
       modelYear,
       engineCapacity,
       registrationNumber,
-      chassisNumber
+      chassisNumber,
+      addOns
     } = req.body;
+
+    // Parse addOns if it's a JSON string
+    let parsedAddOns = [];
+    if (addOns) {
+      try {
+        parsedAddOns = typeof addOns === 'string' ? JSON.parse(addOns) : addOns;
+      } catch (e) {
+        parsedAddOns = [];
+      }
+    }
 
     // Verify policy type exists
     const policyType = await PolicyType.findById(policyTypeId);
@@ -126,6 +192,15 @@ router.post('/buy', auth, [
       return res.status(400).json({ success: false, message: 'Invalid model year' });
     }
 
+    // Validate chassis number
+    const cleanedChassis = chassisNumber.toUpperCase().trim();
+    if (!validateChassisNumber(cleanedChassis)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid chassis number. Must be exactly 17 alphanumeric characters (no I, O, or Q)' 
+      });
+    }
+
     // Check for duplicate registration number
     const existingPolicy = await Policy.findOne({ 
       registrationNumber: registrationNumber.toUpperCase().trim() 
@@ -134,6 +209,79 @@ router.post('/buy', auth, [
       return res.status(400).json({ 
         success: false, 
         message: 'A policy already exists for this vehicle registration number' 
+      });
+    }
+
+    // Handle document uploads
+    const documents = {
+      rcDocument: { path: null, ipfsCid: null },
+      insuranceDocument: { path: null, ipfsCid: null },
+      drivingLicense: { path: null, ipfsCid: null }
+    };
+
+    if (req.files) {
+      // RC Document is required
+      if (!req.files.rcDocument || req.files.rcDocument.length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'RC Document is required' 
+        });
+      }
+
+      // Process RC Document
+      const rcFile = req.files.rcDocument[0];
+      documents.rcDocument.path = rcFile.path;
+      
+      // Upload to IPFS if available
+      if (ipfsService.isAvailable()) {
+        try {
+          const rcCid = await ipfsService.uploadFile(rcFile.path, rcFile.originalname);
+          if (rcCid) {
+            documents.rcDocument.ipfsCid = rcCid;
+          }
+        } catch (ipfsError) {
+          console.error('IPFS upload error for RC:', ipfsError);
+          // Continue even if IPFS fails
+        }
+      }
+
+      // Process Insurance Document (optional)
+      if (req.files.insuranceDocument && req.files.insuranceDocument.length > 0) {
+        const insFile = req.files.insuranceDocument[0];
+        documents.insuranceDocument.path = insFile.path;
+        
+        if (ipfsService.isAvailable()) {
+          try {
+            const insCid = await ipfsService.uploadFile(insFile.path, insFile.originalname);
+            if (insCid) {
+              documents.insuranceDocument.ipfsCid = insCid;
+            }
+          } catch (ipfsError) {
+            console.error('IPFS upload error for Insurance:', ipfsError);
+          }
+        }
+      }
+
+      // Process Driving License (optional)
+      if (req.files.drivingLicense && req.files.drivingLicense.length > 0) {
+        const dlFile = req.files.drivingLicense[0];
+        documents.drivingLicense.path = dlFile.path;
+        
+        if (ipfsService.isAvailable()) {
+          try {
+            const dlCid = await ipfsService.uploadFile(dlFile.path, dlFile.originalname);
+            if (dlCid) {
+              documents.drivingLicense.ipfsCid = dlCid;
+            }
+          } catch (ipfsError) {
+            console.error('IPFS upload error for DL:', ipfsError);
+          }
+        }
+      }
+    } else {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'RC Document is required' 
       });
     }
 
@@ -150,7 +298,8 @@ router.post('/buy', auth, [
       modelYear,
       engineCapacity,
       registrationNumber: registrationNumber.toUpperCase().trim(),
-      chassisNumber: chassisNumber.toUpperCase().trim()
+      chassisNumber: cleanedChassis,
+      documents: documents
     });
 
     await policy.save();

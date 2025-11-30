@@ -4,6 +4,7 @@
   "description": "Blockchain-Integrated Vehicle Insurance Management System",
   "scripts": {
     "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../smart-contracts && npm install && cd ../fabric-simulator && npm install && cd ../oracle-service && npm install",
+    "dev": "concurrently --names \"BLOCKCHAIN,BACKEND,FRONTEND,ML-ANALYZER,FABRIC,ORACLE\" --prefix-colors \"cyan,yellow,green,magenta,blue,red\" \"npm run dev:blockchain\" \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:ml\" \"npm run dev:fabric\" \"npm run dev:oracle\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm start",
     "dev:blockchain": "cd smart-contracts && npx hardhat node",
@@ -15,8 +16,15 @@
     "create-admin": "cd backend && node scripts/create-admin.js",
     "seed:policies": "cd backend && node scripts/seed-policy-types.js"
   },
-  "keywords": ["blockchain", "insurance", "vehicle", "ipfs"],
+  "keywords": [
+    "blockchain",
+    "insurance",
+    "vehicle",
+    "ipfs"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
 }
-

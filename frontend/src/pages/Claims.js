@@ -5,7 +5,6 @@ import { claimAPI } from '../services/api';
 const Claims = () => {
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [mlReports, setMlReports] = useState({}); // Store ML reports by claim ID
 
   useEffect(() => {
     fetchClaims();
@@ -18,15 +17,6 @@ const Claims = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    // Fetch ML reports for claims that have mlReportCID
-    claims.forEach(claim => {
-      if (claim.mlReportCID && !mlReports[claim._id]) {
-        fetchMLReport(claim._id);
-      }
-    });
-  }, [claims]);
-
   const fetchClaims = async () => {
     try {
       const res = await claimAPI.getAll();
@@ -37,22 +27,6 @@ const Claims = () => {
       toast.error('Failed to load claims');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchMLReport = async (claimId) => {
-    try {
-      const res = await claimAPI.getMLReport(claimId);
-      if (res.data.success) {
-        setMlReports(prev => ({
-          ...prev,
-          [claimId]: res.data.mlReport
-        }));
-        console.log(`✅ ML Report fetched for claim ${claimId}. Severity: ${res.data.mlReport.severity}`);
-      }
-    } catch (error) {
-      console.error(`Failed to fetch ML report for claim ${claimId}:`, error);
-      // Don't show toast for this, just log it
     }
   };
 
@@ -146,11 +120,6 @@ const Claims = () => {
                             }} />
                           </div>
                         </div>
-                        {claim.damageParts && claim.damageParts.length > 0 && (
-                          <small style={{ fontSize: '11px', color: '#666' }}>
-                            {claim.damageParts.join(', ')}
-                          </small>
-                        )}
                       </div>
                     ) : (
                       <span className="badge badge-secondary">Pending</span>
@@ -215,4 +184,3 @@ const Claims = () => {
 };
 
 export default Claims;
-

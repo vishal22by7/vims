@@ -1,7 +1,3 @@
-"""
-ML Damage Analyzer Microservice
-Uses Google Gemini Vision API for vehicle damage analysis
-"""
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -85,8 +81,6 @@ def init_gemini():
         # Make sure GEMINI_API_KEY is set in environment
         os.environ['GEMINI_API_KEY'] = GEMINI_API_KEY
         gemini_client = genai.Client()
-        print(f"✅ Using Gemini model: {gemini_model_name}")
-        print("✅ Gemini API initialized successfully")
     except Exception as e:
         print(f"⚠️  Warning: Could not initialize Gemini: {e}")
         print("   Using mock analysis for development")
@@ -291,6 +285,9 @@ async def upload_to_ipfs(data: dict) -> str:
     """Upload JSON report to IPFS via Pinata"""
     if not (PINATA_JWT or (PINATA_API_KEY and PINATA_SECRET_API_KEY)):
         logger.warning("⚠️  IPFS upload skipped: Pinata credentials not configured")
+        logger.warning(f"   PINATA_JWT: {'Set' if PINATA_JWT else 'Not set'}")
+        logger.warning(f"   PINATA_API_KEY: {'Set' if PINATA_API_KEY else 'Not set'}")
+        logger.warning(f"   PINATA_SECRET_API_KEY: {'Set' if PINATA_SECRET_API_KEY else 'Not set'}")
         return None
 
     try:
@@ -303,9 +300,20 @@ async def upload_to_ipfs(data: dict) -> str:
 
         async with aiohttp.ClientSession() as session:
             form_data = aiohttp.FormData()
-            form_data.add_field('file', json_bytes, filename='ml_report.json', content_type='application/json')
-            form_data.add_field('pinataMetadata', json.dumps({"name": "ml_report.json"}), content_type='application/json')
-            form_data.add_field('pinataOptions', json.dumps({"cidVersion": 1}), content_type='application/json')
+            # Use BytesIO to create a file-like object (Pinata expects a file, not raw bytes)
+            json_file = io.BytesIO(json_bytes)
+            json_file.seek(0)  # Ensure we're at the start of the file
+            # Pinata API expects 'file' field with the file content
+            form_data.add_field('file', 
+                              json_file, 
+                              filename='ml_report.json', 
+                              content_type='application/json')
+            form_data.add_field('pinataMetadata', 
+                              json.dumps({"name": "ml_report.json"}), 
+                              content_type='application/json')
+            form_data.add_field('pinataOptions', 
+                              json.dumps({"cidVersion": 1}), 
+                              content_type='application/json')
 
             headers = {}
             if PINATA_JWT:
@@ -315,22 +323,38 @@ async def upload_to_ipfs(data: dict) -> str:
                 headers['pinata_api_key'] = PINATA_API_KEY
                 headers['pinata_secret_api_key'] = PINATA_SECRET_API_KEY
                 logger.info("🔑 Using Pinata API key authentication")
+                logger.debug(f"   API Key: {PINATA_API_KEY[:10]}...")
 
             async with session.post(url, data=form_data, headers=headers) as response:
                 response_text = await response.text()
                 logger.info(f"📡 Pinata response status: {response.status}")
+                logger.debug(f"📡 Pinata response: {response_text[:200]}")
+                
                 if response.status == 200:
-                    result = await response.json()
-                    cid = result.get('IpfsHash') or result.get('Hash')
-                    if cid:
-                        logger.info(f"✅ Upload successful, CID: {cid}")
-                        return cid
-                    logger.warning("⚠️  Upload response missing CID")
-                    return None
+                    try:
+                        result = await response.json()
+                        cid = result.get('IpfsHash') or result.get('Hash')
+                        if cid:
+                            logger.info(f"✅ Upload successful, CID: {cid}")
+                            logger.info(f"🔗 Report available at: {PINATA_GATEWAY}/{cid}")
+                            return cid
+                        else:
+                            logger.warning("⚠️  Upload response missing CID")
+                            logger.warning(f"   Response: {result}")
+                            return None
+                    except Exception as json_error:
+                        logger.error(f"❌ Failed to parse Pinata response as JSON: {json_error}")
+                        logger.error(f"   Response text: {response_text[:500]}")
+                        return None
                 else:
                     logger.error(f"❌ Pinata upload failed: Status {response.status}")
-                    logger.error(f"Response: {response_text[:500]}")
-                    raise Exception(f"IPFS API returned status {response.status}: {response_text[:200]}")
+                    logger.error(f"   Response: {response_text[:500]}")
+                    # Don't raise exception, just return None so the process can continue
+                    return None
+    except aiohttp.ClientError as e:
+        logger.error(f"❌ IPFS upload network error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return None
     except Exception as e:
         logger.error(f"❌ IPFS upload failed: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")

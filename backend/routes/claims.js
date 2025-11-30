@@ -217,7 +217,6 @@ router.post('/submit', auth, upload.array('photos', 5), [
               // Store first photo CID for ML analysis
               if (!firstPhotoCID) {
                 firstPhotoCID = ipfsCid;
-                firstPhotoPath = file.path; // Keep path for direct Gemini upload
               }
 
               // Record IPFS file
@@ -237,10 +236,12 @@ router.post('/submit', auth, upload.array('photos', 5), [
           // Step 1b: Save local copy (move from temp to permanent location)
           const permanentPath = path.join(uploadsDir, `${claim._id}_${file.filename}`);
           fs.copyFileSync(file.path, permanentPath);
+          console.log(`💾 Saved photo to permanent location: ${permanentPath}`);
           
-          // Store first photo path for Gemini analysis
+          // Store first photo path for Gemini analysis (always use permanent path)
           if (!firstPhotoPath) {
             firstPhotoPath = permanentPath;
+            console.log(`📸 Set firstPhotoPath for ML analysis: ${firstPhotoPath}`);
           }
 
           // Step 1c: Save photo record in database
@@ -278,18 +279,29 @@ router.post('/submit', auth, upload.array('photos', 5), [
 
     // Step 2: ML Analysis - Send image directly to Gemini (bypass IPFS)
     let mlReport = null;
+    console.log(`\n🔍 ML Analysis Check:`);
+    console.log(`   firstPhotoPath: ${firstPhotoPath}`);
+    console.log(`   firstPhotoPath exists: ${firstPhotoPath ? fs.existsSync(firstPhotoPath) : 'N/A'}`);
+    console.log(`   ML_ANALYZER_URL: ${ML_ANALYZER_URL}`);
+    
     if (firstPhotoPath && fs.existsSync(firstPhotoPath)) {
       try {
-        console.log(`🔍 Sending image directly to Gemini for analysis: ${firstPhotoPath}`);
+        console.log(`\n🔍 Sending image directly to Gemini for analysis:`);
+        console.log(`   File path: ${firstPhotoPath}`);
+        console.log(`   File size: ${fs.statSync(firstPhotoPath).size} bytes`);
+        console.log(`   ML Analyzer URL: ${ML_ANALYZER_URL}/analyze/upload`);
+        
         const FormData = require('form-data');
         const formData = new FormData();
         formData.append('file', fs.createReadStream(firstPhotoPath), path.basename(firstPhotoPath));
         
+        console.log(`📤 Making request to ML analyzer...`);
         const mlResponse = await axios.post(`${ML_ANALYZER_URL}/analyze/upload`, formData, {
           headers: formData.getHeaders(),
           timeout: 30000
         });
-        console.log(`✅ ML analysis via direct upload successful`);
+        console.log(`✅ ML analyzer responded with status: ${mlResponse.status}`);
+        console.log(`📦 Response data:`, JSON.stringify(mlResponse.data, null, 2));
         
         if (mlResponse && mlResponse.data) {
           mlReport = mlResponse.data;
@@ -306,11 +318,27 @@ router.post('/submit', auth, upload.array('photos', 5), [
             claim.mlReportCID = mlReport.mlReportCID || null;
             claim.damageParts = mlReport.damage_parts || [];
             claim.mlConfidence = mlReport.confidence || null;
-            console.log(`✅ ML Analysis complete: Severity=${mlReport.severity}, Confidence=${mlReport.confidence}`);
+            console.log(`\n✅ ML Analysis complete:`);
+            console.log(`   Severity: ${mlReport.severity}`);
+            console.log(`   Confidence: ${mlReport.confidence}`);
+            console.log(`   Damage Parts: ${mlReport.damage_parts?.join(', ') || 'None'}`);
+            console.log(`   ML Report CID: ${mlReport.mlReportCID || 'Not uploaded to IPFS'}`);
           }
+        } else {
+          console.warn(`⚠️  ML analyzer returned empty response`);
         }
       } catch (mlError) {
-      } catch (mlError) {
+        console.error(`\n❌ ML Analysis Error:`);
+        console.error(`   Error message: ${mlError.message}`);
+        if (mlError.response) {
+          console.error(`   Status: ${mlError.response.status}`);
+          console.error(`   Response data:`, JSON.stringify(mlError.response.data, null, 2));
+        }
+        if (mlError.code) {
+          console.error(`   Error code: ${mlError.code}`);
+        }
+        console.error(`   Full error:`, mlError);
+        
         // Handle specific validation errors (400 status)
         if (mlError.response && mlError.response.status === 400) {
           const errorDetail = mlError.response.data?.detail || {};
@@ -322,6 +350,12 @@ router.post('/submit', auth, upload.array('photos', 5), [
           console.error('⚠️  ML Analysis error (non-fatal):', mlError.message);
           // Continue without ML analysis for other errors
         }
+      }
+    } else {
+      console.warn(`\n⚠️  ML Analysis skipped:`);
+      console.warn(`   Reason: ${!firstPhotoPath ? 'No photo path set' : 'Photo file does not exist'}`);
+      if (firstPhotoPath) {
+        console.warn(`   Expected path: ${firstPhotoPath}`);
       }
     }
 
@@ -529,4 +563,3 @@ router.delete('/:id', auth, async (req, res) => {
 });
 
 module.exports = router;
-

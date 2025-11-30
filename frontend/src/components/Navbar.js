@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -13,6 +13,20 @@ const Navbar = () => {
     logout();
     navigate('/login');
   };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.profile-dropdown')) {
+        document.querySelectorAll('.profile-dropdown-menu').forEach(menu => {
+          menu.classList.remove('show');
+        });
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   return (
     <nav className="navbar">
@@ -51,13 +65,59 @@ const Navbar = () => {
               >
                 {theme === 'light' ? '🌙' : '☀️'}
               </button>
-              <span className="navbar-username">
-                {user?.name}
-                {user?.role === 'admin' && <span className="admin-badge">Admin</span>}
-              </span>
-              <button onClick={handleLogout} className="btn btn-secondary btn-sm">
-                Logout
-              </button>
+              <div className="profile-dropdown">
+                <button 
+                  className="profile-icon-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const dropdown = e.currentTarget.nextElementSibling;
+                    const isOpen = dropdown?.classList.contains('show');
+                    // Close all dropdowns
+                    document.querySelectorAll('.profile-dropdown-menu').forEach(menu => {
+                      menu.classList.remove('show');
+                    });
+                    if (!isOpen) {
+                      dropdown?.classList.add('show');
+                    }
+                  }}
+                  title="Profile"
+                >
+                  <div className="profile-icon">
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                </button>
+                <div className="profile-dropdown-menu">
+                  <div className="profile-dropdown-header">
+                    <div className="profile-dropdown-avatar">
+                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div className="profile-dropdown-info">
+                      <div className="profile-dropdown-name">{user?.name}</div>
+                      <div className="profile-dropdown-email">{user?.email}</div>
+                    </div>
+                  </div>
+                  <div className="profile-dropdown-divider"></div>
+                  <Link 
+                    to="/profile" 
+                    className="profile-dropdown-item"
+                    onClick={(e) => {
+                      e.currentTarget.closest('.profile-dropdown-menu')?.classList.remove('show');
+                    }}
+                  >
+                    👤 My Profile
+                  </Link>
+                  <div className="profile-dropdown-divider"></div>
+                  <button 
+                    onClick={(e) => {
+                      e.currentTarget.closest('.profile-dropdown-menu')?.classList.remove('show');
+                      handleLogout();
+                    }} 
+                    className="profile-dropdown-item profile-dropdown-logout"
+                  >
+                    🚪 Logout
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

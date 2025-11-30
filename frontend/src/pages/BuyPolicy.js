@@ -19,6 +19,11 @@ const BuyPolicy = () => {
     endDate: '',
     addOns: [],
   });
+  const [documents, setDocuments] = useState({
+    rcDocument: null,
+    insuranceDocument: null,
+    drivingLicense: null,
+  });
   const [premium, setPremium] = useState(null);
   const [loading, setLoading] = useState(false);
   const formatCurrency = (value) => new Intl.NumberFormat('en-IN', {
@@ -44,10 +49,41 @@ const BuyPolicy = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: name === 'modelYear' || name === 'engineCapacity' ? parseFloat(value) || '' : value,
-    });
+    // Validate chassis number (17 chars, no I, O, Q)
+    if (name === 'chassisNumber') {
+      const cleaned = value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '').slice(0, 17);
+      setFormData({
+        ...formData,
+        [name]: cleaned,
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: name === 'modelYear' || name === 'engineCapacity' ? parseFloat(value) || '' : value,
+      });
+    }
+  };
+
+  const handleDocumentChange = (e) => {
+    const { name } = e.target;
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+      if (!validTypes.includes(file.type)) {
+        toast.error('Please upload a valid file (JPG, PNG, or PDF)');
+        return;
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size must be less than 5MB');
+        return;
+      }
+      setDocuments({
+        ...documents,
+        [name]: file,
+      });
+    }
   };
 
   const calculatePremium = useCallback(async () => {
@@ -66,6 +102,7 @@ const BuyPolicy = () => {
     } catch (error) {
       console.error('Premium calculation error:', error);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.policyTypeId, formData.vehicleType, formData.modelYear, formData.engineCapacity, formData.addOns]);
 
   useEffect(() => {
@@ -80,17 +117,49 @@ const BuyPolicy = () => {
       return;
     }
 
+    // Validate chassis number
+    if (formData.chassisNumber.length !== 17) {
+      toast.error('Chassis number must be exactly 17 characters');
+      return;
+    }
+
+    // Validate chassis number format (no I, O, Q)
+    const vinPattern = /^[A-HJ-NPR-Z0-9]{17}$/;
+    if (!vinPattern.test(formData.chassisNumber.toUpperCase())) {
+      toast.error('Invalid chassis number format. Cannot contain I, O, or Q');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await policyAPI.buy({
-        ...formData,
-        premium,
-        modelYear: parseInt(formData.modelYear),
-        engineCapacity: parseFloat(formData.engineCapacity),
-        registrationNumber: formData.registrationNumber.toUpperCase().trim(),
-        chassisNumber: formData.chassisNumber.toUpperCase().trim(),
-      });
+      // Create FormData for file uploads
+      const formDataToSend = new FormData();
+      formDataToSend.append('policyTypeId', formData.policyTypeId);
+      formDataToSend.append('vehicleType', formData.vehicleType);
+      formDataToSend.append('vehicleBrand', formData.vehicleBrand);
+      formDataToSend.append('vehicleModel', formData.vehicleModel);
+      formDataToSend.append('modelYear', parseInt(formData.modelYear));
+      formDataToSend.append('engineCapacity', parseFloat(formData.engineCapacity));
+      formDataToSend.append('registrationNumber', formData.registrationNumber.toUpperCase().trim());
+      formDataToSend.append('chassisNumber', formData.chassisNumber.toUpperCase().trim());
+      formDataToSend.append('startDate', formData.startDate);
+      formDataToSend.append('endDate', formData.endDate);
+      formDataToSend.append('premium', premium);
+      formDataToSend.append('addOns', JSON.stringify(formData.addOns));
+
+      // Append documents if uploaded
+      if (documents.rcDocument) {
+        formDataToSend.append('rcDocument', documents.rcDocument);
+      }
+      if (documents.insuranceDocument) {
+        formDataToSend.append('insuranceDocument', documents.insuranceDocument);
+      }
+      if (documents.drivingLicense) {
+        formDataToSend.append('drivingLicense', documents.drivingLicense);
+      }
+
+      const res = await policyAPI.buy(formDataToSend);
 
       if (res.data.success) {
         toast.success('Policy purchased successfully!');
@@ -113,11 +182,16 @@ const BuyPolicy = () => {
 
   return (
     <div className="container">
-      <h1>Buy Insurance Policy</h1>
+      <div className="page-header">
+        <div>
+          <h1>Buy Insurance Policy</h1>
+          <p className="page-subtitle">Get comprehensive vehicle insurance coverage in minutes</p>
+        </div>
+      </div>
       
       <div className="dashboard-grid">
         <div className="card">
-          <h2>Policy Details</h2>
+          <h2 style={{ marginTop: 0 }}>Vehicle & Policy Information</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label>Policy Type *</label>
@@ -224,13 +298,20 @@ const BuyPolicy = () => {
                 name="chassisNumber"
                 value={formData.chassisNumber}
                 onChange={handleChange}
-                placeholder="e.g., ABC1234567890XYZ"
+                placeholder="e.g., MAH1A2B3C4D5E6F7G"
                 style={{ textTransform: 'uppercase' }}
+                maxLength={17}
+                pattern="[A-HJ-NPR-Z0-9]{17}"
                 required
               />
               <small style={{ color: '#666', fontSize: '0.9em' }}>
-                Enter your vehicle's unique chassis/VIN number
+                Enter 17-character VIN (alphanumeric, no I, O, Q). Example: MAH1A2B3C4D5E6F7G
               </small>
+              {formData.chassisNumber && formData.chassisNumber.length !== 17 && (
+                <small style={{ color: '#dc3545', fontSize: '0.9em', display: 'block', marginTop: '4px' }}>
+                  Chassis number must be exactly 17 characters
+                </small>
+              )}
             </div>
 
             {availableAddOns.length > 0 && (
@@ -253,6 +334,65 @@ const BuyPolicy = () => {
                 ))}
               </div>
             )}
+
+            <div className="form-group" style={{ marginTop: '30px', paddingTop: '20px', borderTop: '2px solid var(--border-color)' }}>
+              <h3 style={{ marginBottom: '20px', color: 'var(--text-primary)' }}>📄 Required Documents</h3>
+              
+              <div className="form-group">
+                <label>RC (Registration Certificate) *</label>
+                <input
+                  type="file"
+                  name="rcDocument"
+                  onChange={handleDocumentChange}
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  required
+                />
+                <small style={{ color: '#666', fontSize: '0.9em' }}>
+                  Upload your vehicle's RC document (JPG, PNG, or PDF, max 5MB)
+                </small>
+                {documents.rcDocument && (
+                  <div style={{ marginTop: '8px', color: '#28a745', fontSize: '0.9em' }}>
+                    ✓ {documents.rcDocument.name}
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Previous Insurance Document (if any)</label>
+                <input
+                  type="file"
+                  name="insuranceDocument"
+                  onChange={handleDocumentChange}
+                  accept=".jpg,.jpeg,.png,.pdf"
+                />
+                <small style={{ color: '#666', fontSize: '0.9em' }}>
+                  Upload previous insurance policy document (optional)
+                </small>
+                {documents.insuranceDocument && (
+                  <div style={{ marginTop: '8px', color: '#28a745', fontSize: '0.9em' }}>
+                    ✓ {documents.insuranceDocument.name}
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Driving License</label>
+                <input
+                  type="file"
+                  name="drivingLicense"
+                  onChange={handleDocumentChange}
+                  accept=".jpg,.jpeg,.png,.pdf"
+                />
+                <small style={{ color: '#666', fontSize: '0.9em' }}>
+                  Upload your driving license (optional)
+                </small>
+                {documents.drivingLicense && (
+                  <div style={{ marginTop: '8px', color: '#28a745', fontSize: '0.9em' }}>
+                    ✓ {documents.drivingLicense.name}
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className="form-group">
               <label>Policy Start Date *</label>

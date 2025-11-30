@@ -11,6 +11,44 @@ const blockchainService = require('../services/blockchain');
 
 const router = express.Router();
 
+// Helper function to calculate payout based on severity and policy premium
+async function calculatePayoutAmount(claim) {
+  try {
+    // Get policy premium
+    const policy = await Policy.findById(claim.policyId);
+    if (!policy) {
+      console.warn('Policy not found for payout calculation, using default');
+      return 0;
+    }
+
+    const policyPremium = policy.premium || 0;
+    const severity = claim.mlSeverity || 0;
+    
+    // Calculate payout: severity percentage of policy premium
+    // For high severity (>=60), use full percentage
+    // For lower severity, use reduced percentage
+    let payoutMultiplier = severity / 100;
+    
+    // Minimum payout: 10% of premium for any approved claim
+    // Maximum payout: 90% of premium (to leave some buffer)
+    if (severity >= 60) {
+      payoutMultiplier = Math.min(0.9, payoutMultiplier); // Cap at 90%
+    } else if (severity > 0) {
+      payoutMultiplier = Math.max(0.1, payoutMultiplier * 0.8); // Reduced for lower severity
+    } else {
+      payoutMultiplier = 0.1; // Minimum 10% for approved claims
+    }
+    
+    const payoutAmount = Math.floor(policyPremium * payoutMultiplier);
+    console.log(`💰 Calculated payout: ₹${payoutAmount} (Premium: ₹${policyPremium}, Severity: ${severity}%, Multiplier: ${(payoutMultiplier * 100).toFixed(1)}%)`);
+    
+    return payoutAmount;
+  } catch (error) {
+    console.error('Error calculating payout:', error);
+    return 0;
+  }
+}
+
 // All routes require admin authentication
 router.use(adminAuth);
 
@@ -197,7 +235,8 @@ router.get('/claims', async (req, res) => {
   try {
     const claims = await Claim.find()
       .populate('userId', 'name email')
-      .populate('policyId', 'vehicleType vehicleBrand vehicleModel')
+      .populate('policyId', 'policyTypeId vehicleType vehicleBrand vehicleModel')
+      .populate('policyId.policyTypeId', 'name')
       .sort({ submittedAt: -1 });
 
     const claimsWithPhotos = await Promise.all(
@@ -231,7 +270,7 @@ router.put('/claims/:id/status', [
     }
 
     const { status } = req.body;
-    const claim = await Claim.findById(req.params.id);
+    const claim = await Claim.findById(req.params.id).populate('policyId');
 
     if (!claim) {
       return res.status(404).json({ success: false, message: 'Claim not found' });
@@ -239,6 +278,20 @@ router.put('/claims/:id/status', [
 
     const oldStatus = claim.status;
     claim.status = status;
+    
+    // Calculate payout if claim is being approved
+    if (status === 'Approved' && claim.payoutAmount === 0) {
+      const calculatedPayout = await calculatePayoutAmount(claim);
+      claim.payoutAmount = calculatedPayout;
+      claim.payoutStatus = calculatedPayout > 0 ? 'Approved' : 'Pending';
+      claim.verified = true;
+      console.log(`✅ Auto-calculated payout for approved claim ${claim._id}: ₹${calculatedPayout}`);
+    } else if (status === 'Rejected') {
+      claim.payoutAmount = 0;
+      claim.payoutStatus = 'Rejected';
+      claim.verified = false;
+    }
+    
     await claim.save();
 
     // Write to blockchain
@@ -274,6 +327,38 @@ router.put('/claims/:id/status', [
     });
   } catch (error) {
     console.error('Update claim status error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Recalculate payout for approved claims
+router.post('/claims/:id/recalculate-payout', async (req, res) => {
+  try {
+    const claim = await Claim.findById(req.params.id).populate('policyId');
+    
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Claim not found' });
+    }
+
+    if (claim.status !== 'Approved') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Can only calculate payout for approved claims' 
+      });
+    }
+
+    const calculatedPayout = await calculatePayoutAmount(claim);
+    claim.payoutAmount = calculatedPayout;
+    claim.payoutStatus = calculatedPayout > 0 ? 'Approved' : 'Pending';
+    await claim.save();
+
+    res.json({
+      success: true,
+      message: `Payout recalculated: ₹${calculatedPayout}`,
+      claim
+    });
+  } catch (error) {
+    console.error('Recalculate payout error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

@@ -46,13 +46,16 @@ export const authAPI = {
 // User API
 export const userAPI = {
   getProfile: () => api.get('/users/profile'),
+  updateProfile: (data) => api.put('/users/profile', data),
 };
 
 // Policy API
 export const policyAPI = {
   getAll: () => api.get('/policies'),
   getById: (id) => api.get(`/policies/${id}`),
-  buy: (data) => api.post('/policies/buy', data),
+  buy: (data) => api.post('/policies/buy', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   delete: (id) => api.delete(`/policies/${id}`),
 };
 
@@ -64,6 +67,7 @@ export const claimAPI = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   delete: (id) => api.delete(`/claims/${id}`),
+  getMLReport: (id) => api.get(`/claims/${id}/ml-report`),
 };
 
 // Calculator API

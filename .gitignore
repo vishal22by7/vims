@@ -25,16 +25,19 @@ backend/uploads/
 uploads/
 
 # Python
-ml-analyzer/__pycache__/
-ml-analyzer/*.pyc
+**/__pycache__/
+**/*.pyc
+.venv/
 ml-analyzer/.venv/
 ml-analyzer/venv/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
+# Keep .vscode and .cursor settings for team consistency
+!.vscode/settings.json
+!.cursor/settings.json
 
 # OS
 .DS_Store

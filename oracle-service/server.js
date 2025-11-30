@@ -43,7 +43,41 @@ async function initBlockchain() {
       return;
     }
 
-    provider = new ethers.JsonRpcProvider(BLOCKCHAIN_RPC_URL);
+    // Retry logic: Wait for blockchain node to be ready
+    let retries = 10;
+    let connected = false;
+    let lastError = null;
+    
+    while (retries > 0 && !connected) {
+      try {
+        provider = new ethers.JsonRpcProvider(BLOCKCHAIN_RPC_URL, {
+          // Suppress connection error logs during retries
+          staticNetwork: false
+        });
+        // Test connection by getting block number
+        await provider.getBlockNumber();
+        connected = true;
+        if (retries < 10) {
+          console.log('✅ Connected to blockchain node');
+        }
+      } catch (error) {
+        lastError = error;
+        retries--;
+        if (retries > 0) {
+          // Only log every 3rd attempt to reduce noise
+          if ((10 - retries) % 3 === 0 || retries === 1) {
+            console.log(`⏳ Waiting for blockchain node... (${10 - retries}/10 attempts)`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        } else {
+          console.error('❌ Failed to connect to blockchain node after 10 attempts');
+          console.error('   Make sure Hardhat node is running on', BLOCKCHAIN_RPC_URL);
+          console.error('   Error:', lastError?.code || lastError?.message || 'Connection refused');
+          return;
+        }
+      }
+    }
+
     wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
     if (CONTRACT_ADDRESS) {
@@ -56,7 +90,11 @@ async function initBlockchain() {
       console.warn('⚠️  Smart contract address not set');
     }
   } catch (error) {
-    console.error('❌ Blockchain initialization error:', error);
+    console.error('❌ Blockchain initialization error:', error.message);
+    // Don't log full error stack for connection errors
+    if (!error.message.includes('ECONNREFUSED')) {
+      console.error('   Full error:', error);
+    }
   }
 }
 
@@ -356,7 +394,32 @@ app.get('/', (req, res) => {
 initBlockchain().then(() => {
   app.listen(PORT, () => {
     console.log(`🚀 Oracle Service running on http://localhost:${PORT}`);
-    console.log(`📡 Listening for blockchain events...`);
+    if (contract) {
+      console.log('📡 Listening for blockchain events...');
+    } else {
+      console.log('⚠️  Running without blockchain connection (will retry in background)');
+    }
   });
+}).catch((error) => {
+  console.error('Failed to initialize blockchain:', error.message);
+  // Still start the server even if blockchain fails
+  app.listen(PORT, () => {
+    console.log(`🚀 Oracle Service running on http://localhost:${PORT}`);
+    console.log('⚠️  Running without blockchain connection (will retry in background)');
+  });
+  
+  // Retry blockchain connection in background every 10 seconds
+  const retryInterval = setInterval(async () => {
+    if (!contract) {
+      console.log('🔄 Retrying blockchain connection...');
+      await initBlockchain();
+      if (contract) {
+        console.log('✅ Blockchain connection established!');
+        clearInterval(retryInterval);
+      }
+    } else {
+      clearInterval(retryInterval);
+    }
+  }, 10000);
 });
 

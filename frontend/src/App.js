@@ -11,6 +11,7 @@ import BuyPolicy from './pages/BuyPolicy';
 import Policies from './pages/Policies';
 import SubmitClaim from './pages/SubmitClaim';
 import Claims from './pages/Claims';
+import Profile from './pages/Profile';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminPolicyTypes from './pages/admin/AdminPolicyTypes';
 import AdminUsers from './pages/admin/AdminUsers';
@@ -67,7 +68,7 @@ function App() {
                 </PrivateRoute>
               }
             />
-            {/* Redirect /admin to /admin if admin tries to access /dashboard */}
+            {}
             <Route
               path="/calculator"
               element={
@@ -105,6 +106,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <Claims />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <PrivateRoute>
+                  <Profile />
                 </PrivateRoute>
               }
             />

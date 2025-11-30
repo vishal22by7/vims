@@ -67,6 +67,20 @@ const policySchema = new mongoose.Schema({
   ipfsCid: {
     type: String,
     default: null
+  },
+  documents: {
+    rcDocument: {
+      path: { type: String, default: null },
+      ipfsCid: { type: String, default: null }
+    },
+    insuranceDocument: {
+      path: { type: String, default: null },
+      ipfsCid: { type: String, default: null }
+    },
+    drivingLicense: {
+      path: { type: String, default: null },
+      ipfsCid: { type: String, default: null }
+    }
   }
 }, {
   timestamps: true

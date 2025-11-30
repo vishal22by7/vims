@@ -1,0 +1,9 @@
+{
+  "python.terminal.activateEnvironment": false,
+  "python.autoComplete.extraPaths": [],
+  "python.analysis.extraPaths": [],
+  "python.defaultInterpreterPath": "",
+  "python.venvPath": "",
+  "python.venvFolders": []
+}
+
